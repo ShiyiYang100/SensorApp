@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Copyright 2015 MbientLab Inc. All rights reserved.
+  ~
+  ~ IMPORTANT: Your use of this Software is limited to those specific rights
+  ~ granted under the terms of a software license agreement between the user who
+  ~ downloaded the software, his/her employer (which must be your employer) and
+  ~ MbientLab Inc, (the "License").  You may not use this Software unless you
+  ~ agree to abide by the terms of the License which can be found at
+  ~ www.mbientlab.com/terms . The License limits your use, and you acknowledge,
+  ~ that the  Software may not be modified, copied or distributed and can be used
+  ~ solely and exclusively in conjunction with a MbientLab Inc, product.  Other
+  ~ than for the foregoing purpose, you may not use, reproduce, copy, prepare
+  ~ derivative works of, modify, distribute, perform, display or sell this
+  ~ Software and/or its documentation for any purpose.
+  ~
+  ~ YOU FURTHER ACKNOWLEDGE AND AGREE THAT THE SOFTWARE AND DOCUMENTATION ARE
+  ~ PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+  ~ INCLUDING WITHOUT LIMITATION, ANY WARRANTY OF MERCHANTABILITY, TITLE,
+  ~ NON-INFRINGEMENT AND FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT SHALL
+  ~ MBIENTLAB OR ITS LICENSORS BE LIABLE OR OBLIGATED UNDER CONTRACT, NEGLIGENCE,
+  ~ STRICT LIABILITY, CONTRIBUTION, BREACH OF WARRANTY, OR OTHER LEGAL EQUITABLE
+  ~ THEORY ANY DIRECT OR INDIRECT DAMAGES OR EXPENSES INCLUDING BUT NOT LIMITED
+  ~ TO ANY INCIDENTAL, SPECIAL, INDIRECT, PUNITIVE OR CONSEQUENTIAL DAMAGES, LOST
+  ~ PROFITS OR LOST DATA, COST OF PROCUREMENT OF SUBSTITUTE GOODS, TECHNOLOGY,
+  ~ SERVICES, OR ANY CLAIMS BY THIRD PARTIES (INCLUDING BUT NOT LIMITED TO ANY
+  ~ DEFENSE THEREOF), OR OTHER SIMILAR COSTS.
+  ~
+  ~ Should you have any questions regarding your right to use this Software,
+  ~ contact MbientLab Inc, at www.mbientlab.com.
+  -->
+
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="130dp"
+    android:background="#FFFFFF"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:id="@+id/alert_reconnecting"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:visibility="invisible"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:srcCompat="@android:drawable/ic_dialog_alert"
+        app:tint="@android:color/holo_red_dark" />
+
+    <TextView
+        android:id="@+id/device_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:layout_marginStart="24dp"
+        android:layout_weight="1"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:textAppearance="?android:attr/textAppearanceMedium"
+        android:textColor="#1846ED"
+        android:textSize="16sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/alert_reconnecting" />
+
+
+    <TextView
+        android:id="@+id/sample_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:layout_marginEnd="24dp"
+        android:layout_weight="1"
+        android:gravity="center_horizontal"
+        android:textAlignment="textStart"
+        android:textAppearance="?android:attr/textAppearanceMedium"
+        android:textColor="#000000"
+        android:textSize="15sp"
+        app:layout_constraintBottom_toBottomOf="@+id/textView24"
+        app:layout_constraintEnd_toStartOf="@+id/textView24"
+        app:layout_constraintTop_toTopOf="@+id/textView24" />
+
+    <Button
+        android:id="@+id/graphsButton"
+        android:layout_width="wrap_content"
+        android:layout_height="35dp"
+        android:layout_marginStart="76dp"
+        android:layout_marginTop="12dp"
+
+        android:background="#00BCD4"
+        android:enabled="false"
+        android:shadowColor="#00BCD4"
+        android:text="General Graphs"
+        android:textSize="8sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/device_name" />
+
+    <Button
+        android:id="@+id/gpio_graphs"
+        android:layout_width="wrap_content"
+        android:layout_height="35dp"
+        android:layout_marginStart="68dp"
+
+        android:background="#00BCD4"
+        android:enabled="false"
+        android:text="GPIO Graphs"
+        android:textSize="8sp"
+        app:layout_constraintBottom_toBottomOf="@+id/graphsButton"
+        app:layout_constraintStart_toEndOf="@+id/graphsButton"
+        app:layout_constraintTop_toTopOf="@+id/graphsButton"
+        app:layout_constraintVertical_bias="1.0" />
+
+    <TextView
+        android:id="@+id/textView20"
+        android:layout_width="match_parent"
+        android:layout_height="5dp"
+        android:background="#D4ECF8"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView24"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="16dp"
+        android:text="Sample"
+        android:textColor="@android:color/black"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/textView20" />
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>
