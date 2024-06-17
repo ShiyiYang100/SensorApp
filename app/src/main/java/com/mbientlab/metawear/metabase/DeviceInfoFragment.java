@@ -33,6 +33,7 @@ package com.mbientlab.metawear.metabase;
 
 import android.app.Activity;;
 import android.bluetooth.BluetoothDevice;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -41,6 +42,7 @@ import android.os.Build;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -51,6 +53,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import com.mbientlab.function.Action;
@@ -153,6 +156,38 @@ public class DeviceInfoFragment extends AppFragmentBase {
                         for (int i = 0; i < 16; i ++){
                             SensorConfig.Adapter.setGraphTrue[i] = false;
                         }
+                        for(MetaBaseDevice md : parameter.devices) {
+                            LayoutInflater inflater = LayoutInflater.from(owner);
+                            View dialogView = inflater.inflate(R.layout.knee_height_layout, null);
+                            final EditText firstValueEditText = dialogView.findViewById(R.id.knee_height);
+                            final EditText secondValueEditText = dialogView.findViewById(R.id.knee_radius);
+                            AlertDialog kneeDialog = new AlertDialog.Builder(owner)
+                                    .setTitle("Enter knee height and radius for device: " + md.name+ " " + md.mac)
+                                    .setView(dialogView)
+                                    .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialogInterface, int w) {
+                                            try {
+                                                float firstValue = Float.parseFloat(firstValueEditText.getText().toString());
+                                                float secondValue = Float.parseFloat(secondValueEditText.getText().toString());
+                                                if (firstValue > 0 && secondValue > 0) {
+                                                    md.m.setKneeHeight(firstValue);
+                                                    md.m.setKneeRadius( secondValue);
+                                                }
+                                            } catch (NumberFormatException e) {
+                                                StreamMonitorFragment.leftKneeHeight = 0f;
+                                                StreamMonitorFragment.rightKneeHeight = 0f;
+                                            }
+                                        }
+                                    })
+                                    .setNegativeButton("Cancel", null)
+                                    .create();
+
+                            kneeDialog.show();
+
+                        }
+
+
 
 
 

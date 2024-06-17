@@ -84,13 +84,21 @@ public class MetaBaseDevice {
     Runnable resetDiscoered;
 
     /**
+     *  record data shown in the summary page fragment
+     */
+    AppState.SummaryItem summaryItem;
+
+    /**
      * Instantiates a new MetaBase device object
      *
      * @param btDevice the Bluetooth device
      * @param name     the name
      */
     MetaBaseDevice(BluetoothDevice btDevice, String name) {
-        this(name, btDevice.getAddress(), new ArrayList<>(), new ArrayList<>());
+        this(name, btDevice.getAddress(), new ArrayList<>(), new ArrayList<>(),
+                new AppState.SummaryItem(new TemperalParameters(),
+                        new SpatialParameters(),
+                        new AngularParameters()));
         this.btDevice = btDevice;
         m = new MetaBaseDeviceData();
     }
@@ -103,6 +111,18 @@ public class MetaBaseDevice {
      * @param sessions       the sessions
      * @param configSessions the config sessions
      */
+    MetaBaseDevice(String name, String mac, List<AppState.Session> sessions,List<AppState.ConfigSession> configSessions, AppState.SummaryItem summaryItem) {
+        this.name = name;
+        this.mac = mac;
+        this.sessions = sessions;
+        this.configSessions = configSessions;
+        this.rssi = 0;
+        this.battery = 0;
+        m = new MetaBaseDeviceData();
+        this.summaryItem = summaryItem;
+
+    }
+
     MetaBaseDevice(String name, String mac, List<AppState.Session> sessions,List<AppState.ConfigSession> configSessions) {
         this.name = name;
         this.mac = mac;
@@ -111,8 +131,9 @@ public class MetaBaseDevice {
         this.rssi = 0;
         this.battery = 0;
         m = new MetaBaseDeviceData();
-
-
+        this.summaryItem = new AppState.SummaryItem(new TemperalParameters(),
+                new SpatialParameters(),
+                new AngularParameters());
     }
 
     /**

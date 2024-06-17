@@ -319,7 +319,7 @@ public class HomeActivityFragment extends AppFragmentBase {
         devicesAdapter = new MetaBaseDevice.Adapter1();
         devicesAdapter.itemClicked = arg1 -> {
             if (devicesAdapter.selectionMode == AdapterSelectionMode.SINGLE) {
-                SelectedGrouping grouping = new SelectedGrouping(arg1.sessions, arg1.configSessions, arg1.name);
+                SelectedGrouping grouping = new SelectedGrouping(arg1.sessions, arg1.configSessions, arg1.name, arg1.summaryItem);
                 grouping.devices.add(arg1);
                 activityBus.swapFragment(DeviceInfoFragment.class, grouping);
             }
@@ -328,7 +328,7 @@ public class HomeActivityFragment extends AppFragmentBase {
         groupsAdapter = new AppState.Group.Adapter();
         groupsAdapter.itemSelected = arg1 -> {
 
-            SelectedGrouping grouping = new SelectedGrouping(arg1.sessions,arg1.configSessions ,arg1.name);
+            SelectedGrouping grouping = new SelectedGrouping(arg1.sessions,arg1.configSessions ,arg1.name,arg1.summaryItem);
             grouping.devices.addAll(arg1.devices.values());
             activityBus.swapFragment(DeviceInfoFragment.class, grouping);
         };

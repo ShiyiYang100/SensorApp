@@ -303,6 +303,132 @@ class AppState {
             }
         }
     }
+    static class SummaryItem{
+
+        TemperalParameters temperalParameters;
+        SpatialParameters spatialParameters;
+        AngularParameters angularParameters;
+
+        String deviceName;
+
+        public SummaryItem(TemperalParameters temperalParameters, SpatialParameters spatialParameters, AngularParameters angularParameters) {
+            this.temperalParameters = temperalParameters;
+            this.spatialParameters = spatialParameters;
+            this.angularParameters = angularParameters;
+            this.deviceName = "";
+        }
+
+        public TemperalParameters getTemperalParameters() {
+            return temperalParameters;
+        }
+
+        public void setTemperalParameters(TemperalParameters temperalParameters) {
+            this.temperalParameters = temperalParameters;
+        }
+
+        public SpatialParameters getSpatialParameters() {
+            return spatialParameters;
+        }
+
+        public void setSpatialParameters(SpatialParameters spatialParameters) {
+            this.spatialParameters = spatialParameters;
+        }
+
+        public AngularParameters getAngularParameters() {
+            return angularParameters;
+        }
+
+        public void setAngularParameters(AngularParameters angularParameters) {
+            this.angularParameters = angularParameters;
+        }
+
+        public String getDeviceName() {
+            return deviceName;
+        }
+
+        public void setDeviceName(String deviceName) {
+            this.deviceName = deviceName;
+        }
+
+
+
+        static class Adapter extends RecyclerView.Adapter<SummaryItem.Adapter.ViewHolder> {
+
+            /**
+             * A list of Config Session items
+             */
+            List<SummaryItem> summaryItems = new ArrayList<>();
+            /**
+             * The Item clicked.
+             */
+            Action<SummaryItem> itemClicked;
+
+            /**
+             * The type View holder.
+             */
+            class ViewHolder extends RecyclerView.ViewHolder {
+                /**
+                 * Instantiates a new View holder.
+                 *
+                 * @param itemView the item view of the Config Session object
+                 */
+                ViewHolder(View itemView) {
+                    super(itemView);
+                    itemView.setOnClickListener(v -> {
+
+                        SummaryItem summaryItem = summaryItems.get(getAdapterPosition());
+                        SummaryFragment.position = getAdapterPosition();
+
+                        notifyItemChanged(getAdapterPosition());
+                        if (itemClicked != null) {
+                            itemClicked.apply(summaryItems.get(getAdapterPosition()));
+                        }
+                    });
+                }
+            }
+
+
+            /**
+             * Instantiates a new Adapter.
+             */
+            Adapter() {
+                summaryItems = new ArrayList<>();
+            }
+
+            @NonNull
+            @Override
+
+            public SummaryItem.Adapter.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+                return new SummaryItem.Adapter.ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.orientation_max_min, parent, false));
+            }
+
+
+
+            @Override
+            public void onBindViewHolder(@NonNull SummaryItem.Adapter.ViewHolder holder, int position) {
+                SummaryItem summaryItem = summaryItems.get(position);
+
+                ((TextView) holder.itemView.findViewById(R.id.orientation_name)).setText(summaryItem.deviceName+"");
+                ((TextView) holder.itemView.findViewById(R.id.summary_oxMax)).setText(summaryItem.getAngularParameters().getxAvgMax()+"");
+                ((TextView) holder.itemView.findViewById(R.id.summary_oyMax)).setText(summaryItem.getAngularParameters().getyAvgMax()+"");
+                ((TextView) holder.itemView.findViewById(R.id.summary_ozMax)).setText(summaryItem.getAngularParameters().getzAvgMax()+"");
+                ((TextView) holder.itemView.findViewById(R.id.summary_oxMin)).setText(summaryItem.getAngularParameters().getxAvgMin()+"");
+                ((TextView) holder.itemView.findViewById(R.id.summary_oyMin)).setText(summaryItem.getAngularParameters().getyAvgMin()+"");
+                ((TextView) holder.itemView.findViewById(R.id.summary_ozMin)).setText(summaryItem.getAngularParameters().getzAvgMin()+"");
+
+            }
+
+            @Override
+            public int getItemCount() {
+                return summaryItems.size();
+            }
+
+            void add(SummaryItem value) {
+                summaryItems.add(value);
+                notifyDataSetChanged();
+            }
+        }
+    }
 
     /**
      * The Group class
@@ -327,6 +453,8 @@ class AppState {
          */
         List<ConfigSession> configSessions;
 
+        AppState.SummaryItem summaryItem;
+
         /**
          * Instantiates a new Group object
          *
@@ -336,8 +464,11 @@ class AppState {
         Group(String name, Map<String, MetaBaseDevice> devices) {
             this.name = name;
             this.devices = devices;
-            sessions = new ArrayList<>();
-            configSessions  = new ArrayList<>();
+            this.sessions = new ArrayList<>();
+            this.configSessions  = new ArrayList<>();
+            this.summaryItem = new SummaryItem(new TemperalParameters(),
+                    new SpatialParameters(),
+                    new AngularParameters());
         }
 
         /**
