@@ -31,6 +31,7 @@
 
 package com.mbientlab.metawear.metabase;
 
+import static java.lang.Math.abs;
 import static java.lang.Math.ceil;
 import static java.lang.Math.floor;
 
@@ -105,7 +106,9 @@ interface DataHandler {
             CSV_HEADERS.put("acceleration", "x-axis (g),x-axis filtered (g),y-axis (g),y-axis filtered (g),z-axis (g),z-axis filtered (g)");
             CSV_HEADERS.put("acceleration-mag", "x-axis (g),y-axis (g),z-axis (g), acc-mag (g)");
             CSV_HEADERS.put("angular-velocity", "x-axis (deg/s),x-axis filtered (deg/s),y-axis (deg/s),y-axis filtered (deg/s),z-axis (deg/s),z-axis filtered (deg/s)");
-            CSV_HEADERS.put("angular-velocity-peak", "y-axis filtered (deg/s),peak index,peak,valley index,valley,mid-swing-index,mid-swing,toe-off-index,toe-off,heel-strike-index,heel-strike,frequency,start,end,swing-phase,stance-phase, order");
+            CSV_HEADERS.put("angular-velocity-peak", "y-axis filtered (deg/s),peak index,peak,valley index,valley,mid-swing-index,mid-swing,toe-off-index,toe-off,heel-strike-index," +
+                    "heel-strike,frequency,start,end,swing-phase,stance-phase, order,stride time,swing time,stance time,toe off,heel strike,double support time," +
+                    "single support time,stride length, walking speed, MFC, step num");
             CSV_HEADERS.put("magnetic-field", "x-axis (T),y-axis (T),z-axis (T)");
             CSV_HEADERS.put("linear-acceleration", "x-axis (g),y-axis (g),z-axis (g)");
             CSV_HEADERS.put("gravity", "x-axis (g),y-axis (g),z-axis (g)");
@@ -118,7 +121,7 @@ interface DataHandler {
             CSV_HEADERS.put("adc", "adc");
             CSV_HEADERS.put("abs-ref", "abs");
             CSV_HEADERS.put("digital", "digital");
-            CSV_HEADERS.put("orientation", "Ax,Ay,Az,Gx,Gy,Gz,O-Roll,O-Pitch,O-Yawl");
+            CSV_HEADERS.put("orientation", "Ax,Ay,Az,Gx,Gy,Gz,O-Roll,O-Pitch,O-Yawl,OXMAX,OXMIN,OYMAX,OYMIN,OZMAX,OZMIN");
             CSV_HEADERS.put("resample", "Ax,Ay,Az,Gx,Gy,Gz,Mx,My,Mz");
 
             SimpleDateFormat df = new SimpleDateFormat("HH:mm", Locale.US);
@@ -140,7 +143,14 @@ interface DataHandler {
         float accYValue, accZValue, accFilteredX, accFilteredY, accFilteredZ;
 
         float gyroXValue, gyroYValue, gyroZValue, gyroFilteredX, gyroFilteredY, gyroFilteredZ;
-        float gyroPeakXValue, gyroPeakYValue, gyroPeakZValue, gyroPeakFilteredY;
+        float gyroPeakXValue, gyroPeakYValue, gyroPeakZValue, gyroPeakFilteredY, gyroPeakFilteredX;
+        float thetaY, prevThetaY, thetaYFilt,thetaY_rad, thetaY_cos, thetaY_sin;
+        float thetaX, prevThetaX, thetaXFilt,thetaX_rad, thetaX_cos, thetaX_sin;
+        float knee_h, v_ay_gyro_hor, v_ay_hor, knee_r, v_ax_gyro_hor, v_ax_hor,
+                v_hor, prevStrideLen, strideLen, walkingSpeed, v_ay_gyro_ver,
+                v_ay_ver;
+        float fc, prev_fc, prev_prev_fc, fc_min, prev_fc_min, prev_prev_fc_min,
+            fc_min_time, prev_fc_min_time, prev_prev_fc_min_time,MFC;
         int gyroPeakOrder;
         //peak-detection data
         float threshold_min ;
@@ -172,6 +182,7 @@ interface DataHandler {
         float last_heal_strike;
         float swing_phase;
         float stance_phase;
+        float stride_phase;
 
         //FFT filter
         ArrayList<Float> fftDataAccX;
@@ -260,7 +271,8 @@ interface DataHandler {
         float initFreqMagZ;
 
         float OMTime;
-        float prevOrientationTime, orientationX, orientationY, orientationZ;
+        float prevOrientationTime, orientationX, orientationY, orientationZ,
+        OXMAX,OXMIN,OYMAX,OYMIN,OZMAX,OZMIN;
 
 
         float previous_MX;
@@ -323,8 +335,10 @@ interface DataHandler {
 
         static List<Double> gyroMagnitude;
 
+
+        //define variables for butter worth filter
         Butterworth butterworthAX, butterworthAY, butterworthAZ,butterworthGX, butterworthGY, butterworthGZ,
-                butterworthMX, butterworthMY, butterworthMZ, butterworthY;
+                butterworthMX, butterworthMY, butterworthMZ, butterworthGyroPeakX,butterworthGyroPeakY, butterworthThetaY,butterworthThetaX ;
         float gyroXPrev, gyroYPrev, gyroZPrev;
         float [] currentV =  new float[3];
         float [] prevV =  new float[3];
@@ -343,6 +357,7 @@ interface DataHandler {
 
         Calendar first, last;
         private Long start, next, prev;
+
 
         MetaBaseDeviceData m;
         float OAx;
@@ -379,6 +394,15 @@ interface DataHandler {
         LineData gpioAbsChartData;
         float accMagSampleNum, accMag, magSampleNum, magXValue, magYValue, magZValue,
             special_value, gpioAdcSampleNum, gpioAdcValue, gpioAbsSampleNum, gpioAbsValue;
+
+        //orientation buffer objects
+        OrientationBuffer oXMax, oXMin, oYMax, oYMin, oZMax, oZMin;
+
+        //gait parameter objects
+        TextView realTimeStrideTime, realTimeSwingTime, realTimeStanceTime, realTimeToeOff,
+            realTimeHeelStrike, realTimeDST, realTimeSST, realTimeStepTime, realTimeStrideLen,
+            realTimeWalkingSpeed, realTimeMFC, realTimeStepNum, realTimeOXMAX, realTimeOXMIN,
+            realTimeOYMAX, realTimeOYMIN, realTimeOZMAX, realTimeOZMIN;
 
 
         private static final DecimalFormat df = new DecimalFormat("0.00");
@@ -432,6 +456,8 @@ interface DataHandler {
             gyroPeakYValue = 0.0f;
             gyroPeakZValue = 0.0f;
             gyroPeakOrder = 0;
+            gyroPeakFilteredX = 0.0f;
+            gyroPeakFilteredY = 0.0f;
             accMag = 0f;
             magXValue = 0f;
             magYValue = 0f;
@@ -440,11 +466,47 @@ interface DataHandler {
             gpioAdcValue = 0f;
             gpioAbsValue = 0f;
 
-            
+            thetaY = 0f;
+            prevThetaY = 0f;
+            thetaYFilt = 0f;
+            thetaY_rad = 0f;
+            thetaY_cos = 0f;
+            thetaY_sin = 0f;
+
+            thetaX = 0f;
+            prevThetaX = 0f;
+            thetaXFilt = 0f;
+            thetaX_rad = 0f;
+            thetaX_cos = 0f;
+            thetaX_sin = 0f;
+
+            knee_h = m.getKneeHeight();
+            v_ay_gyro_hor = 0f;
+            v_ay_hor = 0f;
+            knee_r = 0f;
+            v_ax_gyro_hor = 0f;
+            v_ax_hor = 0f;
+            v_hor = 0f;
+            prevStrideLen = 0f;
+            strideLen = 0f;
+            walkingSpeed = 0f;
+            v_ay_gyro_ver = 0f;
+            v_ay_ver = 0f;
+            fc = Integer.MAX_VALUE;
+            prev_fc = 0f;
+            prev_prev_fc = Integer.MAX_VALUE;
+            fc_min = Integer.MAX_VALUE;
+            prev_fc_min = 0f;
+            prev_prev_fc_min = Integer.MAX_VALUE;
+            fc_min_time =  Integer.MAX_VALUE;
+            prev_fc_min_time = 0f;
+            MFC = 0F;
+            prev_prev_fc_min_time = Integer.MAX_VALUE;
+
 
             //peak-detection data
-            threshold_min = -50f;
-            threshold_max = 180f;
+            threshold_min = -20f;
+            threshold_max = 50f;
             count_peak = 0;
             count_valley = 0;
             v1 = 0f;
@@ -475,8 +537,6 @@ interface DataHandler {
             t = 0f;
             out = new float[3];
 
-
-
             startTimeAcc = 0;
             endTimeAcc = 0;
             startTimeGyro = 0;
@@ -489,11 +549,12 @@ interface DataHandler {
             ifMidSwing = false;
             ifToeOff = false;
             ifHealStrike = false;
-            last_mid_swing = 0f;
-            last_toe_off = 0f;
+            last_mid_swing = 2001f;
+            last_toe_off = 2001f;
             last_heal_strike = 0f;
             swing_phase = 0f;
             stance_phase = 0f;
+            stride_phase = 0f;
 
             rotationVector = new double[4];
             ifRotationVectorSet = false;
@@ -593,6 +654,12 @@ interface DataHandler {
             orientationX = 0;
             orientationY = 0;
             orientationZ = 0;
+            OXMAX = 0f;
+            OXMIN = 0f;
+            OYMAX = 0f;
+            OYMIN = 0f;
+            OZMAX = 0f;
+            OZMIN = 0f;
 
 
             timeConstant = 0.5f;
@@ -618,6 +685,14 @@ interface DataHandler {
             initFreqGyroZ = 5f;
             prevFreqGyroZ = initFreqGyroZ;
 
+            //initialize orientation buffer
+            oXMax = new OrientationBuffer();
+            oXMin = new OrientationBuffer();
+            oYMax = new OrientationBuffer();
+            oYMin = new OrientationBuffer();
+            oZMax = new OrientationBuffer();
+            oZMin = new OrientationBuffer();
+
             butterworthAX = new Butterworth();
             butterworthAY = new Butterworth();
             butterworthAZ = new Butterworth();
@@ -627,7 +702,10 @@ interface DataHandler {
             butterworthMX = new Butterworth();
             butterworthMY = new Butterworth();
             butterworthMZ = new Butterworth();
-            butterworthY = new Butterworth();
+            butterworthGyroPeakX = new Butterworth();
+            butterworthGyroPeakY = new Butterworth();
+            butterworthThetaY = new Butterworth();
+            butterworthThetaX = new Butterworth();
             //if cannot change cutoffFrequency in runtime, then reuse lowPass
             butterworthAX.lowPass(5, frequency.doubleValue(), initFreqAccX);
             butterworthAY.lowPass(5, frequency.doubleValue(), initFreqAccY);
@@ -638,7 +716,12 @@ interface DataHandler {
             butterworthMX.lowPass(5, frequency.doubleValue(), initFreqMagX);
             butterworthMY.lowPass(5, frequency.doubleValue(), initFreqMagY);
             butterworthMZ.lowPass(5, frequency.doubleValue(), initFreqMagZ);
-            butterworthY.lowPass(5, frequency.doubleValue(), initFreqGyroPeak);
+
+            butterworthGyroPeakX.lowPass(5, frequency.doubleValue(), initFreqGyroPeak);
+            butterworthGyroPeakY.lowPass(5, frequency.doubleValue(), initFreqGyroPeak);
+
+            butterworthThetaY.highPass(5, frequency.doubleValue(), 0.5f);
+            butterworthThetaX.highPass(5, frequency.doubleValue(),0.5f);
 
 
             try {
@@ -1245,14 +1328,7 @@ interface DataHandler {
                     float offset = (last.getTimeInMillis() - start) / 1000.f;
 
                     float[] vector = data.value(float[].class);
-                    /*
-                    fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f%n",
-                            last.getTimeInMillis(), formatTimestamp(last), offset,
-                            vector[0], vector[1], vector[2]).getBytes());
 
-                    Log.d("acc", "pooAcc");
-
-                     */
 
 
                     accXValue = vector[0];
@@ -1367,7 +1443,7 @@ interface DataHandler {
 
                      */
 
-
+                    //store acc data in MetaBaseDeviceData object for orientation computation and data resampling
                     if(m.isORunning() && m.isRRunning()) {
                         m.setOATime(offset);
                         m.setRATime(offset);
@@ -1411,15 +1487,15 @@ interface DataHandler {
                 }
                 else if (prefix.equals("angular-velocity") && sensorConfigType.equals("angular-velocity")) {
                     //define the filter algorithm object
-                    ifGyro = true;
+                    ifGyro = true;  //check if Gyroscope is enabled
 
 
                     calcRealTimestamp(data, 0xffffffffL);
-                    float offset = (last.getTimeInMillis() - start) / 1000.f;
+                    float offset = (last.getTimeInMillis() - start) / 1000.f; //get current time
 
 
                     float[] vector = data.value(float[].class);
-
+                    //get current data
                     gyroXValue = vector[0];
                     gyroYValue = vector[1];
                     gyroZValue = vector[2];
@@ -1433,6 +1509,8 @@ interface DataHandler {
 
 
                     if(ifStop){
+                        //after user stop collecting data, the program collects all samples between
+                        //last cycle and stop time
                         float sampleSizeX          = fftDataGyroX.size();    //size of the sample
                         float sampleSizeY          = fftDataGyroY.size();
                         float sampleSizeZ          = fftDataGyroZ.size();
@@ -1448,7 +1526,8 @@ interface DataHandler {
                         samplingFreqsGZ.add(samplingFreqZ);
 
                     }
-                    else if(timeDifference >= 10){
+                    else if(timeDifference >= 5){
+                        //update data every 5 sec
 
                         //apply FFT filter
                         float sampleSizeX          = fftDataGyroX.size();    //size of the sample
@@ -1484,14 +1563,16 @@ interface DataHandler {
                         startTimeGyro = endTimeGyro;
                         fftDataGyroZ.clear();
 
-
+                        //update samplingFreq of Accelerometer if difference in frequency > 1.0
                         if (Math.abs(samplingFreqX - prevFreqGyroX) > 1){
                             butterworthGX.lowPass(5, frequency.doubleValue(), findButterWorthFreq(samplingFreqX));
+                            m.setGyroPeakX( findButterWorthFreq(samplingFreqX));
                         }
                         prevFreqGyroX = samplingFreqX;
-
+                        //update samplingFreq of Gyroscope if difference in frequency > 1.0
                         if (Math.abs(samplingFreqY - prevFreqGyroY) > 1){
                             butterworthGY.lowPass(5, frequency.doubleValue(), findButterWorthFreq(samplingFreqY));
+                            m.setGyroPeakY( findButterWorthFreq(samplingFreqX));
                         }
                         prevFreqGyroY = samplingFreqY;
 
@@ -1501,6 +1582,7 @@ interface DataHandler {
                         prevFreqGyroZ = samplingFreqZ;
                     }
                     else{
+                        //otherwise don't worry about difference in frequency
                         currFreqGyroX = 0;
                         startTimeGyroX = 0;
                         endTimeGyroX = 0;
@@ -1521,8 +1603,10 @@ interface DataHandler {
 
                     gyroFilteredZ = (float)(butterworthGZ.filter((double) vector[2]));
 
-
+                    //store acc data in MetaBaseDeviceData object for orientation computation and data resampling
                     if(m.isORunning() && m.isRRunning()) {
+                        //collect Accelerometer data and Gyroscope data when they are enabled
+                        //the data are collected for calculating orientation
                         m.setOGTime(offset);
                         m.setRGTime(offset);
 
@@ -1564,50 +1648,53 @@ interface DataHandler {
                     gyroPeakYValue = vector[1];
                     gyroPeakZValue = vector[2];
 
-                    //gyroFilteredX = (float)(butterworth1.filter((double) vector[0]));
-                    gyroPeakFilteredY = (float)(butterworthY.filter((double) vector[1]));
+                    gyroPeakFilteredX = (float)(butterworthGyroPeakX.filter((double) vector[0]));
+                    gyroPeakFilteredY = (float)(butterworthGyroPeakY.filter((double) vector[0]));
                     //gyroFilteredZ = (float)(butterworth3.filter((double) vector[2]));
 
-                    //DoFFT
-                    endTimePeak = offset;
-                    double timeDifference = endTimePeak - startTimePeak;
-                    fftData.add(gyroPeakYValue);
-
-
-                    if(ifStop){
-                        float sampleSize          = fftData.size();    //size of the sample
-                        float sampleTime          = calculateCaptureTime(startTimePeak, endTimePeak);       //time when the sample is collected
-                        float samplingFreq        = calculateFreq(sampleSize, sampleTime);
-                        samplingFreqs.add(samplingFreq);
-
-                    }
-                    else if(timeDifference >= 10){
-
-                        //apply FFT filter
-                        float sampleSize          = fftData.size();    //size of the sample
-                        float sampleTime          = calculateCaptureTime(startTimePeak, endTimePeak);       //time when the sample is collected
-                        float samplingFreq        = calculateFreq(sampleSize, sampleTime);
-                        samplingFreqs.add(samplingFreq);
-
-                        currFreqGyroPeak = samplingFreq;
-                        lastStartTimeGyroPeak = startTimeGyroPeak;
-                        endTimeGyroPeak = offset;
-                        startTimeGyroPeak = offset;
-                        startTimePeak = endTimePeak;
-                        fftData.clear();
-
-                        if (Math.abs(samplingFreq - prevFreqGyroPeak) > 1){
-                            gyroPeakOrder = findButterWorthFreq(samplingFreq);
-                            butterworthY.lowPass(5, frequency.doubleValue(), findButterWorthFreq(samplingFreq));
-                        }
-                        prevFreqGyroPeak = samplingFreq;
-                    }
-                    else{
-                        currFreqGyroPeak = 0;
-                        startTimeGyroPeak = 0;
-                        endTimeGyroPeak = 0;
-                        gyroPeakOrder = 0;
-                    }
+//                    //DoFFT
+//                    endTimePeak = offset;
+//                    double timeDifference = endTimePeak - startTimePeak;
+//                    //fftData.add(gyroPeakYValue);
+//
+//
+//
+//                    if(ifStop){
+//                        float sampleSize          = fftData.size();    //size of the sample
+//                        float sampleTime          = calculateCaptureTime(startTimePeak, endTimePeak);       //time when the sample is collected
+//                        float samplingFreq        = calculateFreq(sampleSize, sampleTime);
+//                        samplingFreqs.add(samplingFreq);
+//
+//                    }
+//                    else if(timeDifference >= 10){
+//
+//                        //apply FFT filter
+//                        float sampleSize          = fftData.size();    //size of the sample
+//                        float sampleTime          = calculateCaptureTime(startTimePeak, endTimePeak);       //time when the sample is collected
+//                        float samplingFreq        = calculateFreq(sampleSize, sampleTime);
+//                        samplingFreqs.add(samplingFreq);
+//
+//                        currFreqGyroPeak = samplingFreq;
+//                        lastStartTimeGyroPeak = startTimeGyroPeak;
+//                        endTimeGyroPeak = offset;
+//                        startTimeGyroPeak = offset;
+//                        startTimePeak = endTimePeak;
+//                        fftData.clear();
+//
+//
+//
+//                        if (Math.abs(samplingFreq - prevFreqGyroPeak) > 1){
+//                            gyroPeakOrder = findButterWorthFreq(samplingFreq);
+//                            butterworthGyroPeak.lowPass(5, frequency.doubleValue(), findButterWorthFreq(samplingFreq));
+//                        }
+//                        prevFreqGyroPeak = samplingFreq;
+//                    }
+//                    else{
+//                        currFreqGyroPeak = 0;
+//                        startTimeGyroPeak = 0;
+//                        endTimeGyroPeak = 0;
+//                        gyroPeakOrder = 0;
+//                    }
 
                     //get v1, v2, v3
                     if(gyroPeakSampleNum > 2){
@@ -1625,6 +1712,60 @@ interface DataHandler {
                         v2 = 0f;
                         v3 = gyroPeakFilteredY;
                     }
+
+
+                    // Update for thetaY
+                    thetaY =  gyroPeakYValue * period;
+                    thetaYFilt = (float) m.getGyroPeakY().filter(thetaY);
+
+                    // Convert to radians and check for valid range
+                    if (Math.abs(thetaY) < 1E7) { // Adjust this threshold as needed
+                        thetaY_rad = (float) (thetaY * Math.PI/180);
+                        thetaY_cos = (float)Math.cos(thetaY_rad);
+                        thetaY_sin = (float)Math.sin(thetaY_rad);
+                    } else {
+//                        // Handle error: thetaYFilt out of range
+//                        thetaY_rad = 0;
+//                        thetaY_cos = 1;
+//                        thetaY_sin = 0;
+                    }
+                    prevThetaY = thetaY;
+
+                    // Update for thetaX
+                    thetaX =  gyroPeakXValue * period;
+                    thetaXFilt = (float) m.getGyroPeakX().filter(thetaX);
+
+// Convert to radians and check for valid range
+//                    if (Math.abs(thetaX) < 1E7) { // Adjust this threshold as needed
+//                        thetaX_rad = (float) (thetaX * Math.PI/180);
+//                        thetaX_cos = (float) Math.cos(thetaX_rad);
+//                        thetaX_sin = (float) Math.sin(thetaX_rad);
+//                    } else {
+//                        // Handle error: thetaXFilt out of range
+//                        thetaX_rad = 0;
+//                        thetaX_cos = 1;
+//                        thetaX_sin = 0;
+//                    }
+                    thetaX_rad = (float) (thetaX * Math.PI/180);
+                    thetaX_cos = (float) Math.cos(thetaX_rad);
+                    thetaX_sin = (float) Math.sin(thetaX_rad);
+                    prevThetaX = thetaX;
+
+                    // Compute horizontal velocity
+                    knee_h = (float) (m.getKneeHeight() * 1.0f / 100.0f);
+                    v_ay_gyro_hor = (float) (- gyroPeakFilteredY * Math.PI / (180 * knee_h));
+
+                    v_ay_hor = v_ay_gyro_hor * thetaY_cos;
+
+                    knee_r = (float) (m.getKneeRadius() * 1.0f / (2*Math.PI * 100));
+                    v_ax_gyro_hor = (float) (- gyroPeakFilteredX * Math.PI/(180*knee_r));
+                    v_ax_hor = v_ax_gyro_hor * thetaX_cos;
+
+                    v_hor = v_ax_hor + v_ay_hor;
+                    Log.d("walking speed", v_ax_hor +"/"+v_ay_hor+"/"+knee_h + "/" + thetaY_cos + "/" + thetaY_sin);
+
+                    // Logging for debugging
+
 
                     if((v2 > v3) && (v2 > v1) && (v2 > threshold_max)){
                         count_peak ++;
@@ -1645,21 +1786,59 @@ interface DataHandler {
                             data_num++;
                             prev_data_num = data_num;
                             toe_off = valley;
+                            m.addToTotalToeOff(toe_off);
+                            m.setRealToeOff(toe_off);
+                            m.addToNumToeOff();
                             toe_off_index = valley_index;
                             ifToeOff = true;
-                            last_toe_off = offset;
-                            if(last_heal_strike != 0){
-                                stance_phase = offset - last_heal_strike;
+
+                            if(last_toe_off != 2001f
+                            ){
+                                stride_phase = offset - last_toe_off;
+                                m.addToStrideLength(stride_phase);
+                                m.addToTotalStride();
+                                m.setRealStrideTime(stride_phase);
+
+                                //calculate stride len
+                                strideLen = Math.abs(v_hor) * period;
+                                //strideLen = stride_phase;
+                                m.addToTotalStrideLen(strideLen);
+                                m.setRealStrideLen(strideLen);
+
+                                m.addToNumStrideLen();
+                                prevStrideLen = strideLen;
+                                if( ((offset - last_toe_off) * period) != 0) {
+                                    walkingSpeed = strideLen / (offset - last_toe_off);
+                                }
+                                m.addToTotalWalkingSpeed(walkingSpeed);
+                                m.setRealWalkingSpeed(walkingSpeed);
+                                m.addToNumWalkingSpeed();
+
                             }
+
+                            last_toe_off = offset;
+                            if(last_heal_strike != 2001f){
+                                stance_phase = offset - last_heal_strike;
+                                m.addToStance(stance_phase);
+                                m.addToTotalStance();
+                                m.setRealStanceTime(stance_phase);
+                            }
+
                             special_value = valley;
                         }else if (count_valley % 2 == 0  && valley < threshold_min){
                             data_num++;
                             heel_strike = valley;
+                            m.addToTotalHeelStrike(heel_strike);
+                            m.setRealHeelStrike(heel_strike);
+                            m.addToNumHeelStrike();
                             heel_strike_index = valley_index;
                             ifHealStrike = true;
                             last_heal_strike = offset;
-                            if(last_toe_off != 0){
+                            if(last_toe_off != 2001f){
                                 swing_phase = offset - last_toe_off;
+                                m.addToSwing(swing_phase);
+                                m.addToTotalSwing();
+                                m.setRealSwingTime(swing_phase);
                             }
                             special_value = valley;
                         }
@@ -1685,6 +1864,41 @@ interface DataHandler {
 
                     }
 
+                    //compute vertical velocity
+                    v_ay_gyro_ver = (float) (gyroPeakYValue * Math.PI / 180 * knee_h);
+                    v_ay_ver = v_ay_gyro_ver * thetaY_sin;
+
+                    //update fc
+                    fc = prev_fc + v_ay_ver * period;
+
+                    //find MFC peak
+                    if(prev_prev_fc != Integer.MAX_VALUE && prev_fc < prev_prev_fc && prev_fc < fc){
+                        fc_min = fc;
+                        fc_min_time = offset;
+
+                        if(prev_prev_fc_min != Integer.MAX_VALUE && prev_fc < prev_prev_fc_min
+                            && prev_fc < fc_min){
+                            MFC = Math.abs(fc_min - prev_fc);
+                            m.addToTotalMFC(MFC);
+                            m.setRealMFC(MFC);
+                            m.addToNumMFC();
+                        }
+
+                        prev_prev_fc_min = prev_fc_min;
+                        prev_prev_fc_min_time = prev_fc_min_time;
+                        prev_fc_min = fc_min;
+                        prev_fc_min_time = fc_min_time;
+
+
+
+                    }
+
+                    prev_prev_fc = prev_fc;
+                    prev_fc = fc;
+
+
+                    
+
                     if(ifStop){
                         int freqSize = samplingFreqs.size();
                         //find average
@@ -1698,16 +1912,33 @@ interface DataHandler {
                             currFreqGyroPeak = sumFreq / samplingFreqs.size();
                         }
                         endTimeGyroPeak = offset;
-
-                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
+                        float dst = (strideLen / 2) - swing_phase;
+                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f," +
+                                        "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
                                 last.getTimeInMillis(), formatTimestamp(last), offset,
-                                gyroPeakFilteredY, peak_index, peak, valley_index, valley, mid_swing_index, mid_swing, toe_off_index, toe_off, heel_strike_index, heel_strike, currFreqGyroPeak, lastStartTimeGyroPeak, endTimeGyroPeak,swing_phase, stance_phase).getBytes());
+                                gyroPeakFilteredY, peak_index, peak, valley_index, valley, mid_swing_index, mid_swing, toe_off_index, toe_off,
+                                heel_strike_index, heel_strike, currFreqGyroPeak, lastStartTimeGyroPeak, endTimeGyroPeak,swing_phase, stance_phase,
+                                stride_phase,swing_phase,stance_phase,toe_off,heel_strike,dst,swing_phase,strideLen/2,strideLen,walkingSpeed,
+                                MFC, (int)m.getTotalStride()/2).getBytes());
                     }
                     else if(peak != 0 || valley != 0||currFreqGyroPeak !=0 || startTimeGyroPeak != 0||endTimeGyroPeak!=0 ) {
-                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
+                        float dst = (strideLen / 2) - swing_phase;
+                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f," +
+                                        "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
                                 last.getTimeInMillis(), formatTimestamp(last), offset,
-                                gyroPeakFilteredY, peak_index, peak, valley_index, valley, mid_swing_index, mid_swing, toe_off_index, toe_off, heel_strike_index, heel_strike,currFreqGyroPeak, lastStartTimeGyroPeak, endTimeGyroPeak,swing_phase, stance_phase).getBytes());
+                                gyroPeakFilteredY, peak_index, peak, valley_index, valley, mid_swing_index, mid_swing, toe_off_index, toe_off,
+                                heel_strike_index, heel_strike, currFreqGyroPeak, lastStartTimeGyroPeak, endTimeGyroPeak,swing_phase, stance_phase,
+                                stride_phase,swing_phase,stance_phase,toe_off,heel_strike,dst,swing_phase,strideLen/2,strideLen,walkingSpeed,
+                                MFC, (int)m.getTotalStride()/2).getBytes());
                     }
+                    float dst = (strideLen / 2) - swing_phase;
+                    fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f," +
+                                    "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
+                            last.getTimeInMillis(), formatTimestamp(last), offset,
+                            gyroPeakFilteredY, peak_index, peak, valley_index, valley, mid_swing_index, mid_swing, toe_off_index, toe_off,
+                            heel_strike_index, heel_strike, currFreqGyroPeak, lastStartTimeGyroPeak, endTimeGyroPeak,swing_phase, stance_phase,
+                            stride_phase,swing_phase,stance_phase,toe_off,heel_strike,dst,swing_phase,strideLen/2,strideLen,walkingSpeed,
+                            MFC, (int)m.getTotalStride()/2).getBytes());
 
                 }
                 else if (prefix.equals("magnetic-field")) {
@@ -2240,16 +2471,22 @@ interface DataHandler {
 
                 }
                 else if (prefix.equals("angular-velocity")&& sensorConfigType.equals("orientation")) {
-                    //Log.d("digital", "doo");
+                    /*
+                        orientation section computes orientation values every 2 sec,
+                        and store the accelerometer and gyroscope values in array lists
+                        stored in MetaBaseDeviceData object
+                     */
+
+
+
                     last = data.timestamp();
                     if (start == null) {
                         first = last;
                         start = first.getTimeInMillis();
                     }
                     float offset = (last.getTimeInMillis() - start) / 1000.f;
-                    //Log.d("digital", "poo");
 
-                    //Log.d("digital", "poo");
+
                     //TODO: need to modify here !
                     float OATime = m.getOATime();
                     float time;
@@ -2260,64 +2497,212 @@ interface DataHandler {
                     }
                     float OGTime = m.getOGTime();
 
-                    if (!ifStop) {
+                    if (!ifStop){
+                        /*
+                            before user clicked on the stop button, calculates orientation values
+                            every 2 sec
+                         */
+
+
+
+                        /*
+                            to avoid array index out of bound exception, get current time based on
+                            the smaller one of the time of last data collected of accelerometer and gyroscope
+                            get acc and gyro data between last data collection time and current time
+                         */
                         ArrayList<Float> oaTimes = m.getOATimes();
-                        int oaTimesSize = m.getOATimes().size();
                         ArrayList<Float> ogTimes = m.getOGTimes();
-                        int ogTimesSize = m.getOGTimes().size();
-                        float oaLast = oaTimes.get(oaTimesSize - 1);
-                        float ogLast = ogTimes.get(ogTimesSize - 1);
+                        float oaLast = oaTimes.get(oaTimes.size()-1);
+                        float ogLast = ogTimes.get(ogTimes.size()-1);
 
-                            float prevT = m.getOAPrevTime();
-                            float minT;
-                            if (oaLast < ogLast) {
-                                minT = oaLast;
-                            } else {
-                                minT = ogLast;
+                        float prevT = m.getOAPrevTime();
+                        float minT;
+                        if (oaLast < ogLast) {
+                            minT = oaLast;
+                        } else {
+                            minT = ogLast;
+                        }
+
+                        if(minT != prevOrientationTime || minT == 0){
+                            //if current time = 0sec, than no need to compute orientation values as no data is collected
+                            float[] oa = m.getOA(minT);
+                            float[] og = m.getOG(minT);
+                            float[] o = orientation(50, oa[0], oa[1], oa[2], og[0], og[1], og[2],m);
+                            orientationX = o[0];
+                            orientationY = o[1];
+                            orientationZ = o[2];
+                            orientationSampleNum+=2;
+                            prevOrientationTime = minT;
+                        }
+
+                        if (minT - prevT >= 2) {
+
+                            List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                            List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                            List<Float> oZ = new ArrayList<>();     //store orientation z-axis
+
+                            for (float t = prevT; t <= minT; t += 0.02) {
+                                t = Float.parseFloat(df.format(t));
+                                if (m.oaDContains(t) && m.ogDContains(t)) {
+                                    float[] oa = m.getOA(t);    //get acc data collected in previous 2 sec
+                                    float[] og = m.getOG(t);    //get gyro data collected in previous 2 sec
+                                    //compute orientation values
+                                    float[] orientation = orientation(50, oa[0], oa[1], oa[2], og[0], og[1], og[2],m);
+                                    oX.add(orientation[0]);
+                                    oY.add(orientation[1]);
+                                    oZ.add(orientation[2]);
+                                    fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
+                                            last.getTimeInMillis(), formatTimestamp(last), t,
+                                            oa[0], oa[1], oa[2], og[0], og[1],
+                                            og[2], orientation[0], orientation[1], orientation[2]).getBytes());
+                                }
+                                m.removeOAD(t);
+                                m.removeOGD(t);
+
                             }
 
-                            if(minT != prevOrientationTime || minT == 0){
-                                float[] oa = m.getOA(minT);
-                                float[] og = m.getOG(minT);
-                                float[] o = orientation(50, oa[0], oa[1], oa[2], og[0], og[1], og[2],m);
-                                orientationX = o[0];
-                                orientationY = o[1];
-                                orientationZ = o[2];
-                                orientationSampleNum+=2;
-                                prevOrientationTime = minT;
-                            }
+                            //find minimum and maximum values of orientation data
+                            for(int i = 0; i < oX.size(); i ++){
+                                if(i == 0){
+                                    float currOX = oX.get(i);
+                                    float nextOX = oX.get(i+1);
+                                    float currOY = oY.get(i);
+                                    float nextOY = oY.get(i+1);
+                                    float currOZ = oZ.get(i);
+                                    float nextOZ = oZ.get(i+1);
 
-                            if (minT - prevT >= 2) {
-
-
-                                for (float t = prevT; t <= minT; t += 0.02) {
-                                    t = Float.parseFloat(df.format(t));
-                                    if (m.oaDContains(t) && m.ogDContains(t)) {
-                                        float[] oa = m.getOA(t);
-                                        float[] og = m.getOG(t);
-                                        float[] orientation = orientation(50, oa[0], oa[1], oa[2], og[0], og[1], og[2],m);
-                                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
-                                                last.getTimeInMillis(), formatTimestamp(last), t,
-                                                oa[0], oa[1], oa[2], og[0], og[1],
-                                                og[2], orientation[0], orientation[1], orientation[2]).getBytes());
+                                    //check value and the edge of the interval, make sure find local maximums
+                                    if(currOX > nextOX && oXMax.isIfUpdated() && currOX > oXMax.getBuffer()){
+                                        m.addToOXMax(currOX);
+                                        m.addToNumOXMax();
                                     }
-                                    m.removeOAD(t);
-                                    m.removeOGD(t);
+                                    if(currOY > nextOY && oYMax.isIfUpdated() && currOY > oYMax.getBuffer()){
+                                        m.addToOYMax(currOY);
+                                        m.addToNumOYMax();
+                                    }
+                                    if(currOZ > nextOZ && oZMax.isIfUpdated() && currOZ > oZMax.getBuffer()){
+                                        m.addToOZMax(currOZ);
+                                        m.addToNumOZMax();
+                                    }
+
+                                    //check value and the edge of the interval, make sure find local minimums
+                                    if(currOX < nextOX && oXMin.isIfUpdated() && currOX < oXMin.getBuffer()){
+                                        m.addToOXMin(currOX);
+                                        m.addToNumOXMin();
+                                    }
+                                    if(currOY < nextOY && oYMin.isIfUpdated() && currOY < oYMin.getBuffer()){
+                                        m.addToOYMin(currOY);
+                                        m.addToNumOYMin();
+                                    }
+                                    if(currOZ < nextOZ && oZMin.isIfUpdated() && currOZ < oZMin.getBuffer()){
+                                        m.addToOZMin(currOZ);
+                                        m.addToNumOZMin();
+                                    }
+
+                                    oXMax.setIfUpdated(false);
+                                    oXMin.setIfUpdated(false);
+                                    oYMax.setIfUpdated(false);
+                                    oYMin.setIfUpdated(false);
+                                    oZMax.setIfUpdated(false);
+                                    oZMin.setIfUpdated(false);
+                                }
+                                else if (i == (oX.size() -1)){
+                                    float currOX = oX.get(i);
+                                    float prevOX = oX.get(i-1);
+                                    float currOY = oY.get(i);
+                                    float prevOY = oY.get(i-1);
+                                    float currOZ = oZ.get(i);
+                                    float prevOZ = oZ.get(i-1);
+
+                                    if(currOX > prevOX) {
+                                        oXMax.setBuffer(currOX);
+                                        oXMax.setIfUpdated(true);
+                                    }
+                                    if(currOX < prevOX){
+                                        oXMin.setBuffer(currOX);
+                                        oXMin.setIfUpdated(true);
+                                    }
+                                    if(currOY > prevOY) {
+                                        oYMax.setBuffer(currOY);
+                                        oYMax.setIfUpdated(true);
+                                    }
+                                    if(currOY < prevOY){
+                                        oYMin.setBuffer(currOY);
+                                        oYMin.setIfUpdated(true);
+                                    }
+                                    if(currOZ > prevOZ) {
+                                        oZMax.setBuffer(currOZ);
+                                        oZMax.setIfUpdated(true);
+                                    }
+                                    if(currOZ < prevOZ){
+                                        oZMin.setBuffer(currOZ);
+                                        oZMin.setIfUpdated(true);
+                                    }
+                                }
+                                else{
+                                    float currOX = oX.get(i);
+                                    float nextOX = oX.get(i+1);
+                                    float prevOX = oX.get(i-1);
+                                    float currOY = oY.get(i);
+                                    float nextOY = oY.get(i+1);
+                                    float prevOY = oY.get(i-1);
+                                    float currOZ = oZ.get(i);
+                                    float nextOZ = oZ.get(i+1);
+                                    float prevOZ = oZ.get(i-1);
+
+                                    if(currOX > prevOX && currOX > nextOX){
+                                        m.addToOXMax(currOX);
+                                        m.addToNumOXMax();
+                                    }
+                                    if(currOX < prevOX && currOX < nextOX){
+                                        m.addToOXMin(currOX);
+                                        m.addToNumOXMin();
+                                    }
+                                    if(currOY > prevOY && currOY > nextOY){
+                                        m.addToOYMax(currOY);
+                                        m.addToNumOYMax();
+                                    }
+                                    if(currOY < prevOY && currOY < nextOY){
+                                        m.addToOYMin(currOY);
+                                        m.addToNumOYMin();
+                                    }
+                                    if(currOZ > prevOZ && currOZ > nextOZ){
+                                        m.addToOZMax(currOZ);
+                                        m.addToNumOZMax();
+                                    }
+                                    if(currOZ < prevOZ && currOZ < nextOZ){
+                                        m.addToOZMin(currOZ);
+                                        m.addToNumOZMin();
+                                    }
 
                                 }
-
-                                m.clearOAData();
-                                m.clearOGData();
-                                m.setOAPrevTime(minT);
-                                m.clearOATimes();
-                                m.clearOGTimes();
-                                m.clearOTimes();
-
-
                             }
-                        //}
-                    }else {
+
+                            //clean up data after computing orientation values, avoid data overflow
+                            m.clearOAData();
+                            m.clearOGData();
+                            m.setOAPrevTime(minT);
+                            m.clearOATimes();
+                            m.clearOGTimes();
+                            m.clearOTimes();
+
+
+                        }
+                    }
+                    else {
+                         /*
+                            when user clicked on stop, get all accelerometer data and
+                            gyroscope data from MetaBaseDeviceObject m, and compute
+                            orientation values
+                         */
                         if (!m.isIfOrientated()) {
+                              /*
+                                to avoid array index out of bound exception, get current time based on
+                                the smaller one of the time of last data collected of accelerometer and gyroscope
+                                get acc and gyro data between last data collection time and current time
+                                The time in last row is based on the smaller one of acc and gyro's last time
+                                to avoid index out of bound exception
+                             */
                             ArrayList<Float> oaTimes = m.getOATimes();
                             int oaTimesSize = m.getOATimes().size();
                             ArrayList<Float> ogTimes = m.getOGTimes();
@@ -2339,17 +2724,140 @@ interface DataHandler {
                                 float[] resampled_yA = resampledDataA[1];
                                 float[] resampled_zA = resampledDataA[2];
 
+                                List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                                List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                                List<Float> oZ = new ArrayList<>();     //store orientation z-axis
 
                                 for (int i = 0; i < resampledTime.length; i++) {
+                                    //compute orientation values
                                     float[] orientation = orientation(50,resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i], m );
+                                    oX.add(orientation[0]);
+                                    oY.add(orientation[1]);
+                                    oZ.add(orientation[2]);
                                     fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
                                             last.getTimeInMillis(), formatTimestamp(last), resampledTime[i],
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i],
                                             orientation[0], orientation[1], orientation[2]).getBytes());
                                 }
+                                //find minimum and maximum values of orientation data
+                                for(int i = 0; i < oX.size(); i ++){
+                                    if(i == 0){
+                                        float currOX = oX.get(i);
+                                        float nextOX = oX.get(i+1);
+                                        float currOY = oY.get(i);
+                                        float nextOY = oY.get(i+1);
+                                        float currOZ = oZ.get(i);
+                                        float nextOZ = oZ.get(i+1);
 
+                                        //check value and the edge of the interval, make sure find local maximums
+                                        if(currOX > nextOX && oXMax.isIfUpdated() && currOX > oXMax.getBuffer()){
+                                            m.addToOXMax(currOX);
+                                            m.addToNumOXMax();
+                                        }
+                                        if(currOY > nextOY && oYMax.isIfUpdated() && currOY > oYMax.getBuffer()){
+                                            m.addToOYMax(currOY);
+                                            m.addToNumOYMax();
+                                        }
+                                        if(currOZ > nextOZ && oZMax.isIfUpdated() && currOZ > oZMax.getBuffer()){
+                                            m.addToOZMax(currOZ);
+                                            m.addToNumOZMax();
+                                        }
+
+                                        //check value and the edge of the interval, make sure find local minimums
+                                        if(currOX < nextOX && oXMin.isIfUpdated() && currOX < oXMin.getBuffer()){
+                                            m.addToOXMin(currOX);
+                                            m.addToNumOXMin();
+                                        }
+                                        if(currOY < nextOY && oYMin.isIfUpdated() && currOY < oYMin.getBuffer()){
+                                            m.addToOYMin(currOY);
+                                            m.addToNumOYMin();
+                                        }
+                                        if(currOZ < nextOZ && oZMin.isIfUpdated() && currOZ < oZMin.getBuffer()){
+                                            m.addToOZMin(currOZ);
+                                            m.addToNumOZMin();
+                                        }
+
+                                        oXMax.setIfUpdated(false);
+                                        oXMin.setIfUpdated(false);
+                                        oYMax.setIfUpdated(false);
+                                        oYMin.setIfUpdated(false);
+                                        oZMax.setIfUpdated(false);
+                                        oZMin.setIfUpdated(false);
+                                    }
+                                    else if (i == (oX.size() -1)){
+                                        float currOX = oX.get(i);
+                                        float prevOX = oX.get(i-1);
+                                        float currOY = oY.get(i);
+                                        float prevOY = oY.get(i-1);
+                                        float currOZ = oZ.get(i);
+                                        float prevOZ = oZ.get(i-1);
+
+                                        if(currOX > prevOX) {
+                                            oXMax.setBuffer(currOX);
+                                            oXMax.setIfUpdated(true);
+                                        }
+                                        if(currOX < prevOX){
+                                            oXMin.setBuffer(currOX);
+                                            oXMin.setIfUpdated(true);
+                                        }
+                                        if(currOY > prevOY) {
+                                            oYMax.setBuffer(currOY);
+                                            oYMax.setIfUpdated(true);
+                                        }
+                                        if(currOY < prevOY){
+                                            oYMin.setBuffer(currOY);
+                                            oYMin.setIfUpdated(true);
+                                        }
+                                        if(currOZ > prevOZ) {
+                                            oZMax.setBuffer(currOZ);
+                                            oZMax.setIfUpdated(true);
+                                        }
+                                        if(currOZ < prevOZ){
+                                            oZMin.setBuffer(currOZ);
+                                            oZMin.setIfUpdated(true);
+                                        }
+                                    }
+                                    else{
+                                        float currOX = oX.get(i);
+                                        float nextOX = oX.get(i+1);
+                                        float prevOX = oX.get(i-1);
+                                        float currOY = oY.get(i);
+                                        float nextOY = oY.get(i+1);
+                                        float prevOY = oY.get(i-1);
+                                        float currOZ = oZ.get(i);
+                                        float nextOZ = oZ.get(i+1);
+                                        float prevOZ = oZ.get(i-1);
+
+                                        if(currOX > prevOX && currOX > nextOX){
+                                            m.addToOXMax(currOX);
+                                            m.addToNumOXMax();
+                                        }
+                                        if(currOX < prevOX && currOX < nextOX){
+                                            m.addToOXMin(currOX);
+                                            m.addToNumOXMin();
+                                        }
+                                        if(currOY > prevOY && currOY > nextOY){
+                                            m.addToOYMax(currOY);
+                                            m.addToNumOYMax();
+                                        }
+                                        if(currOY < prevOY && currOY < nextOY){
+                                            m.addToOYMin(currOY);
+                                            m.addToNumOYMin();
+                                        }
+                                        if(currOZ > prevOZ && currOZ > nextOZ){
+                                            m.addToOZMax(currOZ);
+                                            m.addToNumOZMax();
+                                        }
+                                        if(currOZ < prevOZ && currOZ < nextOZ){
+                                            m.addToOZMin(currOZ);
+                                            m.addToNumOZMin();
+                                        }
+
+                                    }
+                                }
+                                //clean up data after computing orientation values, avoid data overflow
                                 m.setOAPrevTime(t);
                                 m.clearOAData();
                                 m.clearOGData();
@@ -2370,10 +2878,18 @@ interface DataHandler {
                                 float[] resampled_yG = resampledDataG[1];
                                 float[] resampled_zG = resampledDataG[2];
 
+                                List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                                List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                                List<Float> oZ = new ArrayList<>();     //store orientation z-axis
+
 
                                 for (int i = 0; i < resampledTime.length; i++) {
+                                    //compute orientation values
                                     float[] orientation = orientation(50,resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i], m );
+                                    oX.add(orientation[0]);
+                                    oY.add(orientation[1]);
+                                    oZ.add(orientation[2]);
                                     fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
                                             last.getTimeInMillis(), formatTimestamp(last), resampledTime[i],
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
@@ -2381,6 +2897,136 @@ interface DataHandler {
                                             orientation[0], orientation[1], orientation[2]).getBytes());
                                 }
 
+                                //find minimum and maximum values of orientation data
+                                for(int i = 0; i < oX.size(); i ++){
+                                    if(i == 0){
+                                        float currOX = oX.get(i);
+                                        float nextOX = oX.get(i+1);
+                                        float currOY = oY.get(i);
+                                        float nextOY = oY.get(i+1);
+                                        float currOZ = oZ.get(i);
+                                        float nextOZ = oZ.get(i+1);
+
+                                        //check value and the edge of the interval, make sure find local maximums
+                                        if(currOX > nextOX && oXMax.isIfUpdated() && currOX > oXMax.getBuffer()){
+                                            m.addToOXMax(currOX);
+                                            m.setRealOXMax(currOX);
+                                            m.addToNumOXMax();
+                                        }
+                                        if(currOY > nextOY && oYMax.isIfUpdated() && currOY > oYMax.getBuffer()){
+                                            m.addToOYMax(currOY);
+                                            m.setRealOYMax(currOY);
+                                            m.addToNumOYMax();
+                                        }
+                                        if(currOZ > nextOZ && oZMax.isIfUpdated() && currOZ > oZMax.getBuffer()){
+                                            m.addToOZMax(currOZ);
+                                            m.setRealOZMax(currOZ);
+                                            m.addToNumOZMax();
+                                        }
+
+                                        //check value and the edge of the interval, make sure find local minimums
+                                        if(currOX < nextOX && oXMin.isIfUpdated() && currOX < oXMin.getBuffer()){
+                                            m.addToOXMin(currOX);
+                                            m.setRealOXMin(currOX);
+                                            m.addToNumOXMin();
+                                        }
+                                        if(currOY < nextOY && oYMin.isIfUpdated() && currOY < oYMin.getBuffer()){
+                                            m.addToOYMin(currOY);
+                                            m.setRealOYMin(currOY);
+                                            m.addToNumOYMin();
+                                        }
+                                        if(currOZ < nextOZ && oZMin.isIfUpdated() && currOZ < oZMin.getBuffer()){
+                                            m.addToOZMin(currOZ);
+                                            m.setRealOZMin(currOZ);
+                                            m.addToNumOZMin();
+                                        }
+
+                                        oXMax.setIfUpdated(false);
+                                        oXMin.setIfUpdated(false);
+                                        oYMax.setIfUpdated(false);
+                                        oYMin.setIfUpdated(false);
+                                        oZMax.setIfUpdated(false);
+                                        oZMin.setIfUpdated(false);
+                                    }
+                                    else if (i == (oX.size() -1)){
+                                        float currOX = oX.get(i);
+                                        float prevOX = oX.get(i-1);
+                                        float currOY = oY.get(i);
+                                        float prevOY = oY.get(i-1);
+                                        float currOZ = oZ.get(i);
+                                        float prevOZ = oZ.get(i-1);
+
+                                        if(currOX > prevOX) {
+                                            oXMax.setBuffer(currOX);
+                                            oXMax.setIfUpdated(true);
+                                        }
+                                        if(currOX < prevOX){
+                                            oXMin.setBuffer(currOX);
+                                            oXMin.setIfUpdated(true);
+                                        }
+                                        if(currOY > prevOY) {
+                                            oYMax.setBuffer(currOY);
+                                            oYMax.setIfUpdated(true);
+                                        }
+                                        if(currOY < prevOY){
+                                            oYMin.setBuffer(currOY);
+                                            oYMin.setIfUpdated(true);
+                                        }
+                                        if(currOZ > prevOZ) {
+                                            oZMax.setBuffer(currOZ);
+                                            oZMax.setIfUpdated(true);
+                                        }
+                                        if(currOZ < prevOZ){
+                                            oZMin.setBuffer(currOZ);
+                                            oZMin.setIfUpdated(true);
+                                        }
+                                    }
+                                    else{
+                                        float currOX = oX.get(i);
+                                        float nextOX = oX.get(i+1);
+                                        float prevOX = oX.get(i-1);
+                                        float currOY = oY.get(i);
+                                        float nextOY = oY.get(i+1);
+                                        float prevOY = oY.get(i-1);
+                                        float currOZ = oZ.get(i);
+                                        float nextOZ = oZ.get(i+1);
+                                        float prevOZ = oZ.get(i-1);
+
+                                        if(currOX > prevOX && currOX > nextOX){
+                                            m.addToOXMax(currOX);
+                                            m.setRealOXMax(currOX);
+                                            m.addToNumOXMax();
+                                        }
+                                        if(currOX < prevOX && currOX < nextOX){
+                                            m.addToOXMin(currOX);
+                                            m.setRealOXMin(currOX);
+                                            m.addToNumOXMin();
+                                        }
+                                        if(currOY > prevOY && currOY > nextOY){
+                                            m.addToOYMax(currOY);
+                                            m.setRealOYMax(currOY);
+                                            m.addToNumOYMax();
+                                        }
+                                        if(currOY < prevOY && currOY < nextOY){
+                                            m.addToOYMin(currOY);
+                                            m.setRealOYMin(currOY);
+                                            m.addToNumOYMin();
+                                        }
+                                        if(currOZ > prevOZ && currOZ > nextOZ){
+                                            m.addToOZMax(currOZ);
+                                            m.setRealOZMax(currOZ);
+                                            m.addToNumOZMax();
+                                        }
+                                        if(currOZ < prevOZ && currOZ < nextOZ){
+                                            m.addToOZMin(currOZ);
+                                            m.setRealOZMin(currOZ);
+                                            m.addToNumOZMin();
+                                        }
+
+                                    }
+                                }
+
+                                //clean up data after computing orientation values, avoid data overflow
                                 m.setOAPrevTime(t);
                                 m.clearOATimes();
                                 m.clearOGTimes();
@@ -2390,6 +3036,9 @@ interface DataHandler {
 
 
                             } else {
+                                //if last time collected of acc and gyro are the same, use code below,
+                                //same logic as code above
+
                                 float[] resampledTime = resample_time(ogTimes, oaTimesSize);
                                 float[][] resampledDataA = resample_data(m.getOAData(), resampledTime.length);
                                 float[] resampled_xA = resampledDataA[0];
@@ -2400,15 +3049,150 @@ interface DataHandler {
                                 float[] resampled_yG = resampledDataG[1];
                                 float[] resampled_zG = resampledDataG[2];
 
+                                List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                                List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                                List<Float> oZ = new ArrayList<>();     //store orientation z-axis
+
 
                                 for (int i = 0; i < resampledTime.length; i++) {
                                     float[] orientation = orientation(50,resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i], m );
+                                    oX.add(orientation[0]);
+                                    oY.add(orientation[1]);
+                                    oZ.add(orientation[2]);
                                     fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f%n",
                                             last.getTimeInMillis(), formatTimestamp(last), resampledTime[i],
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i],
                                             orientation[0], orientation[1], orientation[2]).getBytes());
+                                }
+
+                                for(int i = 0; i < oX.size(); i ++){
+                                    if(i == 0){
+                                        float currOX = oX.get(i);
+                                        float nextOX = oX.get(i+1);
+                                        float currOY = oY.get(i);
+                                        float nextOY = oY.get(i+1);
+                                        float currOZ = oZ.get(i);
+                                        float nextOZ = oZ.get(i+1);
+
+                                        //check value and the edge of the interval, make sure find local maximums
+                                        if(currOX > nextOX && oXMax.isIfUpdated() && currOX > oXMax.getBuffer()){
+                                            m.addToOXMax(currOX);
+                                            m.setRealOXMax(currOX);
+                                            m.addToNumOXMax();
+                                        }
+                                        if(currOY > nextOY && oYMax.isIfUpdated() && currOY > oYMax.getBuffer()){
+                                            m.addToOYMax(currOY);
+                                            m.setRealOYMax(currOY);
+                                            m.addToNumOYMax();
+                                        }
+                                        if(currOZ > nextOZ && oZMax.isIfUpdated() && currOZ > oZMax.getBuffer()){
+                                            m.addToOZMax(currOZ);
+                                            m.setRealOZMax(currOZ);
+                                            m.addToNumOZMax();
+                                        }
+
+                                        //check value and the edge of the interval, make sure find local minimums
+                                        if(currOX < nextOX && oXMin.isIfUpdated() && currOX < oXMin.getBuffer()){
+                                            m.addToOXMin(currOX);
+                                            m.setRealOXMin(currOX);
+                                            m.addToNumOXMin();
+                                        }
+                                        if(currOY < nextOY && oYMin.isIfUpdated() && currOY < oYMin.getBuffer()){
+                                            m.addToOYMin(currOY);
+                                            m.addToOYMin(currOY);
+                                            m.addToNumOYMin();
+                                        }
+                                        if(currOZ < nextOZ && oZMin.isIfUpdated() && currOZ < oZMin.getBuffer()){
+                                            m.addToOZMin(currOZ);
+                                            m.setRealOZMin(currOZ);
+                                            m.addToNumOZMin();
+                                        }
+
+                                        oXMax.setIfUpdated(false);
+                                        oXMin.setIfUpdated(false);
+                                        oYMax.setIfUpdated(false);
+                                        oYMin.setIfUpdated(false);
+                                        oZMax.setIfUpdated(false);
+                                        oZMin.setIfUpdated(false);
+                                    }
+                                    else if (i == (oX.size() -1)){
+                                        float currOX = oX.get(i);
+                                        float prevOX = oX.get(i-1);
+                                        float currOY = oY.get(i);
+                                        float prevOY = oY.get(i-1);
+                                        float currOZ = oZ.get(i);
+                                        float prevOZ = oZ.get(i-1);
+
+                                        if(currOX > prevOX) {
+                                            oXMax.setBuffer(currOX);
+                                            oXMax.setIfUpdated(true);
+                                        }
+                                        if(currOX < prevOX){
+                                            oXMin.setBuffer(currOX);
+                                            oXMin.setIfUpdated(true);
+                                        }
+                                        if(currOY > prevOY) {
+                                            oYMax.setBuffer(currOY);
+                                            oYMax.setIfUpdated(true);
+                                        }
+                                        if(currOY < prevOY){
+                                            oYMin.setBuffer(currOY);
+                                            oYMin.setIfUpdated(true);
+                                        }
+                                        if(currOZ > prevOZ) {
+                                            oZMax.setBuffer(currOZ);
+                                            oZMax.setIfUpdated(true);
+                                        }
+                                        if(currOZ < prevOZ){
+                                            oZMin.setBuffer(currOZ);
+                                            oZMin.setIfUpdated(true);
+                                        }
+                                    }
+                                    else{
+                                        float currOX = oX.get(i);
+                                        float nextOX = oX.get(i+1);
+                                        float prevOX = oX.get(i-1);
+                                        float currOY = oY.get(i);
+                                        float nextOY = oY.get(i+1);
+                                        float prevOY = oY.get(i-1);
+                                        float currOZ = oZ.get(i);
+                                        float nextOZ = oZ.get(i+1);
+                                        float prevOZ = oZ.get(i-1);
+
+                                        if(currOX > prevOX && currOX > nextOX){
+                                            m.addToOXMax(currOX);
+                                            m.setRealOYMax(currOX);
+                                            m.addToNumOXMax();
+                                        }
+                                        if(currOX < prevOX && currOX < nextOX){
+                                            m.addToOXMin(currOX);
+                                            m.setRealOXMin(currOX);
+                                            m.addToNumOXMin();
+                                        }
+                                        if(currOY > prevOY && currOY > nextOY){
+                                            m.addToOYMax(currOY);
+                                            m.setRealOYMax(currOY);
+                                            m.addToNumOYMax();
+                                        }
+                                        if(currOY < prevOY && currOY < nextOY){
+                                            m.addToOYMin(currOY);
+                                            m.setRealOYMin(currOY);
+                                            m.addToNumOYMin();
+                                        }
+                                        if(currOZ > prevOZ && currOZ > nextOZ){
+                                            m.addToOZMax(currOZ);
+                                            m.setRealOZMax(currOZ);
+                                            m.addToNumOZMax();
+                                        }
+                                        if(currOZ < prevOZ && currOZ < nextOZ){
+                                            m.addToOZMin(currOZ);
+                                            m.setRealOZMin(currOZ);
+                                            m.addToNumOZMin();
+                                        }
+
+                                    }
                                 }
 
                                 m.setOAPrevTime(t);
@@ -2427,17 +3211,18 @@ interface DataHandler {
                     }
                 }
                 else if (prefix.equals("angular-velocity")&& sensorConfigType.equals("resample")) {
-                    //Log.d("digital", "doo");
+                    /*
+                        resample acc and gyro data, make sure their number of rows are the same
+                     */
+
                     last = data.timestamp();
                     if (start == null) {
                         first = last;
                         start = first.getTimeInMillis();
                     }
-                    float offset = (last.getTimeInMillis() - start) / 1000.f;
-                    //Log.d("digital", "poo");
 
-                    //Log.d("digital", "poo");
-                    //TODO: need to modify here !
+
+
                     float RATime = m.getRATime();
                     float time;
                     time = RATime;
@@ -2448,6 +3233,11 @@ interface DataHandler {
                     float RGTime = m.getRGTime();
 
                     if (!ifStop) {
+                           /*
+                            before user clicked on the stop button,resample acc and gyro values
+                            every 2 sec
+                         */
+
                         float prevTime = m.getRAPrevTime();
                         t = m.getRATime();
 
@@ -2461,7 +3251,7 @@ interface DataHandler {
                                 minT = RGTime;
                             }
                             if (minT - prevT >= 2) {
-
+                                //resample acc and gyro values
 
                                 for (float t = prevT; t <= minT; t += 0.02) {
                                     t = Float.parseFloat(df.format(t));
@@ -2478,7 +3268,7 @@ interface DataHandler {
 
                                 }
 
-
+                                //clear data after resampling, aovid data overflow
                                 m.setRAPrevTime(minT);
                                 m.clearRATimes();
                                 m.clearRGTimes();
@@ -2489,7 +3279,7 @@ interface DataHandler {
                             }
                         }
                     }else {
-                        if (!m.isIfResampled()) {
+                        if (!m.isIfResampled()) {  //avoid duplicate resampling
                             ArrayList<Float> raTimes = m.getRATimes();
                             int raTimesSize = m.getRATimes().size();
                             ArrayList<Float> rgTimes = m.getRGTimes();
@@ -2497,10 +3287,16 @@ interface DataHandler {
                             float raLast = raTimes.get(raTimesSize - 1);
                             float rgLast = rgTimes.get(rgTimesSize - 1);
 
-                            Log.d("last time", "last time a= " + raLast);
-                            Log.d("last time", "last time g= " + rgLast);
+                            /*
+                                to avoid array index out of bound exception, get current time based on
+                                the smaller one of the time of last data collected of accelerometer and gyroscope
+                                get acc and gyro data between last data collection time and current time
+                                The time in last row is based on the smaller one of acc and gyro's last time
+                                to avoid index out of bound exception
+                             */
 
                             if (raLast < rgLast) {
+                                //resample acc and gyro data
                                 float[] resampledTime = resample_time(raTimes, rgTimesSize);
                                 float[][] resampledDataG = resample_data(m.getRGData(), resampledTime.length);
                                 float[] resampled_xG = resampledDataG[0];
@@ -2519,18 +3315,7 @@ interface DataHandler {
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i]).getBytes());
                                 }
 
-                                /*
-                                ArrayList<float[]> extra_data = new ArrayList<>();
-                                ArrayList<Float> extra_time = new ArrayList<>();
-                                for(int i = raTimesSize ; i < m.getRGData().size();i++){
-                                    extra_data.add(m.getRGData().get(i));
-                                }
-                                for(int i = raTimes.size() ; i < rgTimes.size();i++){
-                                    extra_time.add(rgTimes.get(i));
-                                }
-
-                                 */
-
+                                //clear data after resampling to avoid data overflow
                                 m.setRAPrevTime(t);
 
                                 m.clearRATimes();
@@ -2540,30 +3325,8 @@ interface DataHandler {
                                 m.clearRGData();
 
 
-
-                                /*
-                                for (float[] d: extra_data){
-                                    m.putRGData(d);
-                                }
-                                for (float t: extra_time){
-                                    m.putRGTimes(t);
-                                }
-
-                                 */
-                                /*
-                                for(int i = 0; i < raTimesSize; i ++){
-                                    m.getRATimes().remove(i);
-                                    m.getRAData().remove(i);
-                                }
-                                for(int i = 0; i < rgTimesSize; i++){
-                                    m.getRGTimes().remove(i);
-                                    m.getRGData().remove(i);
-                                }
-
-                                 */
-
-
                             } else if (raLast > rgLast) {
+                                //resample acc and gyro data
                                 float[] resampledTime = resample_time(rgTimes, raTimesSize);
                                 float[][] resampledDataA = resample_data(m.getRAData(), resampledTime.length);
                                 float[] resampled_xA = resampledDataA[0];
@@ -2581,6 +3344,11 @@ interface DataHandler {
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i]).getBytes());
                                 }
+
+                                /*
+                                    save data that are not resampled in current cycle, make the data
+                                    ready to be resampled in next resampling cycle
+                                 */
                                 ArrayList<float[]> extra_data = new ArrayList<>();
                                 ArrayList<Float> extra_time = new ArrayList<>();
                                 for (int i = rgTimesSize; i < m.getRAData().size(); i++) {
@@ -2589,6 +3357,8 @@ interface DataHandler {
                                 for (int i = rgTimes.size(); i < raTimes.size(); i++) {
                                     extra_time.add(raTimes.get(i));
                                 }
+
+                                //clear data after resampling to avoid data overflow
                                 m.setRAPrevTime(t);
                                 m.clearRATimes();
                                 m.clearRGTimes();
@@ -2596,17 +3366,8 @@ interface DataHandler {
                                 m.clearRAData();
                                 m.clearRGData();
 
-                                /*
-                                for (float[] d: extra_data){
-                                    m.putRAData(d);
-                                }
-
-                                for (float t: extra_time){
-                                    m.putRATimes(t);
-                                }
-
-                                 */
                             } else {
+                                //resample acc and gyro data
                                 float[] resampledTime = resample_time(rgTimes, raTimesSize);
                                 float[][] resampledDataA = resample_data(m.getRAData(), resampledTime.length);
                                 float[] resampled_xA = resampledDataA[0];
@@ -2624,7 +3385,7 @@ interface DataHandler {
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i]).getBytes());
                                 }
-
+                                //clear data after resampling to avoid data overflow
                                 m.setRAPrevTime(t);
                                 m.clearRATimes();
                                 m.clearRGTimes();
@@ -2640,63 +3401,6 @@ interface DataHandler {
                             m.setIfResampled(true);
                         }
                     }
-
-
-                    /*
-                    if (m.getrTimes().size() >= 2) {
-                        if (m.getResampleTurn() == 0) {
-                            if(m.getrTimes().size()>0){
-                                //m.getrTimes().remove(0);
-                                m.setResampleTurn(1);
-                            }
-
-
-                        } else {
-                            float prevTime = m.getRAPrevTime();
-                            t = m.getrTimes().get(0) ;
-                            t = Float.parseFloat(df.format(t));
-                            if(t - prevTime >= 1){
-                                float[] resampledTime = resample_time(m.getRGTimes(), m.getRATimes().size());
-
-                                for(float ts: resampledTime){
-                                    fos.write(String.format(Locale.US, "%d,%s,%.3f%n",
-                                            last.getTimeInMillis(), formatTimestamp(last), ts).getBytes());
-
-                                    Log.d("resample running", "resample time =" + ts);
-                                }
-
-
-
-                                m.setRAPrevTime(t);
-
-                                m.clearRATimes();
-                                m.clearRGTimes();
-                                m.clearRTimes();
-                                m.setResampleTurn(0);
-
-                                Log.d("resample running", "resample running");
-
-                            }else{
-                                if(m.getrTimes().size() > 0){
-                                    m.getrTimes().remove(0);
-
-                                }
-                            }
-
-
-                            //orientationTurn = 0;
-                        }
-                        //timeRecorded.remove(1);
-                    }
-                    /*
-                    else{
-                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%d%n",
-                                last.getTimeInMillis(), formatTimestamp(last), -1f
-                                , orientationCount).getBytes());
-                    }
-
-                     */
-
 
 
                 }
@@ -2790,37 +3494,5 @@ interface DataHandler {
     }
 
 
-}
 
-//               +------+
-//               |      |
-//               |      |
-// +-------------+      +--------------+
-// |      o      ~Ƨ~~Ƨ~S~    o         |
-// |      \\    s⎝ _ _ ⎠ S  //         |
-// +-------\\--SS \___/ ȜS-//----------+
-//           ⎝\S  _| |_ Ȝs/⎠
-//            ⎝ \/     \/ ⎠
-//             \         /
-//              ⎝ | _ | ⎠
-//              ⎝ | _ | ⎠
-//              ⎝_______⎠
-//              |=======|
-//             |⎝       ⎠|
-//             |         |
-//              ⎝  /\   ⎠
-//              |  ⎛⎞   |
-//               ⎝ ⎛⎞  ⎠
-//              || ⎛⎞  |
-//              || || ||
-//              || || ||
-//              ||⎠  ⎝||
-//              |⎝⎠  ⎝⎠|
-//              |      |
-//              |      |
-//              +------+
-//
-//
-//     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//
-//          No bug forever
+}

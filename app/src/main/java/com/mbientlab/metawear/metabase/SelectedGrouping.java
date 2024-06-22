@@ -41,11 +41,11 @@ class SelectedGrouping {
     /**
      * a list of MetaBase devices in the group
      */
-    final List<MetaBaseDevice> devices;
+    List<MetaBaseDevice> devices;
     /**
      * a list of sessions of currently selected group
      */
-    final List<AppState.Session> sessions;
+    List<AppState.Session> sessions;
     /**
      *  A list records the MetaBase devices that run successfully.
      */
@@ -53,11 +53,13 @@ class SelectedGrouping {
     /**
      * The group name
      */
-    final String name;
+    String name;
     /**
      * a list of config sessions of currently selected group
      */
     List<AppState.ConfigSession> configSessions;
+
+    AppState.SummaryItem summaryItem;
 
     /**
      * Instantiates a new SelectedGrouping object
@@ -66,11 +68,13 @@ class SelectedGrouping {
      * @param configSessions the list of config sessions
      * @param name           the name of the group
      */
-    SelectedGrouping(List<AppState.Session> sessions, List<AppState.ConfigSession> configSessions, String name) {
+    SelectedGrouping(List<AppState.Session> sessions, List<AppState.ConfigSession> configSessions, String name,
+                     AppState.SummaryItem summaryItem) {
         devices = new ArrayList<>();
         this.sessions = sessions;
         this.configSessions = configSessions;
         this.name = name;
         devicesRunSuccessful = new ArrayList<>();
+        this.summaryItem = summaryItem;
     }
 }

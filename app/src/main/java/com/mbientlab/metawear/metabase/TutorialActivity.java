@@ -69,7 +69,7 @@ import bolts.TaskCompletionSource;
 /**
  * The Tutorial Activity class, show the Tutorial Activity when users open the app for the first time
  */
-public class TutorialActivity extends AppCompatActivity implements ServiceConnection {
+    public class TutorialActivity extends AppCompatActivity implements ServiceConnection {
     /**
      * The Extra device.
      */

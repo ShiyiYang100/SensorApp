@@ -48,6 +48,8 @@ import androidx.fragment.app.FragmentTransaction;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+
+import android.util.Log;
 import android.util.Pair;
 import android.view.Menu;
 import android.widget.TextView;
@@ -228,7 +230,13 @@ public class HomeActivity extends AppCompatActivity implements ActivityBus, Serv
     public void swapFragment(Class<? extends AppFragmentBase> nextFragmentClass, Object parameter) {
         scanner.stop();
 
-        backstack.addFirst(new Pair<>(currentFragment.getClass().getCanonicalName(), this.parameter));
+        if(!currentFragment.getClass().getCanonicalName().equals("com.mbientlab.metawear.metabase.SummaryFragment")
+                &&!currentFragment.getClass().getCanonicalName().equals("com.mbientlab.metawear.metabase.StreamMonitorFragment")
+                &&!currentFragment.getClass().getCanonicalName().equals("com.mbientlab.metawear.metabase.SavedSessionsFragment")){
+            backstack.addFirst(new Pair<>(currentFragment.getClass().getCanonicalName(), this.parameter));
+            Log.d("class name", ""+currentFragment.getClass().getCanonicalName());
+        }
+
         this.parameter = parameter;
         backPressedHandler = null;
 

@@ -307,6 +307,7 @@ public class DeviceConfigFragment extends AppFragmentBase {
                     final List<MetaBaseDevice> eraseable = new ArrayList<>();
                     final List<Pair<MetaBaseDevice, Map<SensorConfig, Route>>> activeDevices = new ArrayList<>();
 
+                    // Values are valid, proceed with your logic
                     //configuration dialog
                     final AlertDialog configDialog = new AlertDialog.Builder(owner)
                             .setTitle(R.string.title_config)
@@ -333,290 +334,297 @@ public class DeviceConfigFragment extends AppFragmentBase {
                     }
                     parameter.devicesRunSuccessful.clear();
                     //if (present) {
-                        checkingDialog.show();
+                    checkingDialog.show();
+                    for (final MetaBaseDevice d : parameter.devices) {
+                        parameter.devicesRunSuccessful.add(d);
+                    }
+                    Task.callInBackground(() -> {
+                        Task<Void> task1 = Task.forResult(null);
                         for (final MetaBaseDevice d : parameter.devices) {
-                            parameter.devicesRunSuccessful.add(d);
+                            final MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
+                            task1 = task1.onSuccessTask(ignored1-> {
+                                Log.d("if success1", "if success1");
+                                owner.runOnUiThread(() -> ((TextView) checkingDialog.findViewById(R.id.message)).setText(owner.getString(R.string.message_checking_board, d.name)));
+                                return m.connectAsync();
+                            }).continueWithTask(task3 -> {
+                                if (task3.isFaulted()) {
+                                    parameter.devicesRunSuccessful.remove(d);
+                                    Log.d("if success2", "if success2");
+                                    throw new RuntimeException(String.format("This session has been cancelled because the app failed to configure '%s'", d.name), task3.getError());
+                                }
+                                return task3;
+                            });
                         }
-                        Task.callInBackground(() -> {
-                            Task<Void> task1 = Task.forResult(null);
-                            for (final MetaBaseDevice d : parameter.devices) {
-                                final MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
-                                task1 = task1.onSuccessTask(ignored1-> {
-                                    Log.d("if success1", "if success1");
-                                    owner.runOnUiThread(() -> ((TextView) checkingDialog.findViewById(R.id.message)).setText(owner.getString(R.string.message_checking_board, d.name)));
-                                    return m.connectAsync();
-                                }).continueWithTask(task3 -> {
-                                    if (task3.isFaulted()) {
-                                        parameter.devicesRunSuccessful.remove(d);
-                                        Log.d("if success2", "if success2");
-                                        throw new RuntimeException(String.format("This session has been cancelled because the app failed to configure '%s'", d.name), task3.getError());
-                                    }
-                                    return task3;
-                                });
-                            }
-                            task1.continueWith(task3 -> {
-                                        //configDialog.dismiss();
+                        task1.continueWith(task3 -> {
+                            //configDialog.dismiss();
 
-                                        if (task3.isFaulted()) {
-                                            Log.d("if success6", "if success6");
-                                            present[0] = false;
-                                            DeviceInfoFragment.ifReset = true;
-                                            String errorMsg;
-                                            if (task3.getError() instanceof IllegalRouteOperationException) {
-                                                StringBuilder builder = new StringBuilder();
-                                                builder.append("Firmware v1.3.4 or new required.  Please update the firmware for: \n\n");
+                            if (task3.isFaulted()) {
+                                Log.d("if success6", "if success6");
+                                present[0] = false;
+                                DeviceInfoFragment.ifReset = true;
+                                String errorMsg;
+                                if (task3.getError() instanceof IllegalRouteOperationException) {
+                                    StringBuilder builder = new StringBuilder();
+                                    builder.append("Firmware v1.3.4 or new required.  Please update the firmware for: \n\n");
 
 
-                                                errorMsg = builder.toString();
-                                            } else {
-                                                errorMsg = task3.getError().getLocalizedMessage();
-                                            }
+                                    errorMsg = builder.toString();
+                                } else {
+                                    errorMsg = task3.getError().getLocalizedMessage();
+                                }
 
-                                            new AlertDialog.Builder(owner)
-                                                    .setTitle(R.string.title_error)
-                                                    .setMessage(errorMsg)
-                                                    .setPositiveButton(android.R.string.ok, ((dialog, which) -> {
-                                                        Task<Void> eraseTask = Task.forResult(null);
-
-
-                                                        for (MetaBaseDevice d : parameter.devicesRunSuccessful) {
-                                                            final MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
-                                                            m.getModule(Debug.class).disconnectAsync();
-                                                            m.disconnectAsync();
-                                                            //d.first.isDiscovered = true;
-                                                        }
+                                new AlertDialog.Builder(owner)
+                                        .setTitle(R.string.title_error)
+                                        .setMessage(errorMsg)
+                                        .setPositiveButton(android.R.string.ok, ((dialog, which) -> {
+                                            Task<Void> eraseTask = Task.forResult(null);
 
 
-                                                        eraseTask.continueWith(ignored -> {
-                                                            checkingDialog.dismiss();
-                                                            return null;
-                                                        }, Task.UI_THREAD_EXECUTOR);
-                                                    }))
-                                                    .create()
-                                                    .show();
-
-                                        } else {
-                                            Log.d("if success7", "if success7");
-                                            present[0] = true;
-                                            DeviceInfoFragment.ifReset = false;
-                                            for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> d : activeDevices) {
-                                                final MetaWearBoard m = activityBus.getMetaWearBoard(d.first.btDevice);
-                                                m.disconnectAsync();
-
-                                            }
-
-
-                                        }
-
-                                        checkingDialog.dismiss();
-                                        Task<Void> task = Task.forResult(null);
-                                        if (present[0]){
-                                            configDialog.show();
-                                            DeviceInfoFragment.ifReset = false;
-                                            for (final MetaBaseDevice d : parameter.devices) {
+                                            for (MetaBaseDevice d : parameter.devicesRunSuccessful) {
                                                 final MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
-                                                task = task.onSuccessTask(ignored -> {
-                                                    Log.d("if success11", "if success11");
-                                                    owner.runOnUiThread(() -> ((TextView) configDialog.findViewById(R.id.message)).setText(owner.getString(R.string.message_config_board, d.name)));
-                                                    return m.connectAsync();
-                                                }).continueWithTask(task2 -> {
-                                                    if (task2.isFaulted()) {
-                                                        Log.d("if success21", "if success21");
-                                                        throw new RuntimeException(String.format("This session has been cancelled because the app failed to configure '%s'", d.name), task2.getError());
-                                                    }
-                                                    return task2;
-                                                }).onSuccessTask(ignored -> {
-                                                    Log.d("if success31", "if success31");
-                                                    eraseable.add(d);
-                                                    Settings.BleConnectionParametersEditor editor = m.getModule(Settings.class).editBleConnParams();
-                                                    if (editor != null) {
-                                                        editor.maxConnectionInterval(Global.connInterval)
-                                                                .commit();
-                                                        return Task.delay(1000L);
-                                                    }
-                                                    return Task.forResult(null);
-                                                }).onSuccessTask(ignored -> {
-                                                    Log.d("if success41", "if success41");
-                                                    if (!sensorsAdapter.isStreaming) {
-                                                        m.getModule(Macro.class).startRecord();
-                                                    }
-
-                                                    Led led = m.getModule(Led.class);
-                                                    if (led != null) {
-                                                        led.editPattern(Led.Color.GREEN)
-                                                                .highIntensity((byte) 31).lowIntensity((byte) 0)
-                                                                .riseTime((short) 100).highTime((short) 200).fallTime((short) 100).pulseDuration((short) 800)
-                                                                .repeatCount((byte) 3)
-                                                                .commit();
-                                                        led.editPattern(Led.Color.RED)
-                                                                .highIntensity((byte) 10).lowIntensity((byte) 0)
-                                                                .riseTime((short) 100).highTime((short) 200).fallTime((short) 100).pulseDuration((short) 15000)
-                                                                .delay((short) 2400)
-                                                                .repeatCount(Led.PATTERN_REPEAT_INDEFINITELY)
-                                                                .commit();
-                                                        led.play();
-                                                    }
-
-                                                    final Pair<MetaBaseDevice, Map<SensorConfig, Route>> active = new Pair<>(d, new HashMap<>());
-                                                    Task<Void> createRouteTask = Task.forResult(null);
-
-                                                    for (SensorConfig c : sensorsAdapter.items) {
-                                                        createRouteTask = createRouteTask.onSuccessTask(ignored2 -> {
-                                                            if (c.isEnabled && c.isValid((m))) {
-                                                                return c.addRouteAsync(m).onSuccessTask(task2 -> {
-                                                                    active.second.put(c, task2.getResult());
-                                                                    return Task.forResult(null);
-                                                                });
-                                                            }
-                                                            return Task.forResult(null);
-                                                        });
-                                                    }
-                                                    return createRouteTask.onSuccessTask(ignored2 -> Task.forResult(active));
-                                                }).onSuccessTask(task2 -> {
-                                                    Log.d("if success51", "if success51");
-                                                    activeDevices.add(task2.getResult());
-                                                    if (!sensorsAdapter.isStreaming) {
-                                                        byte[] name = new byte[]{0x4d, 0x65, 0x74, 0x61, 0x57, 0x65, 0x61, 0x72};
-                                                        try {
-                                                            name = d.name.getBytes("ASCII");
-                                                        } catch (UnsupportedEncodingException ignored) {
-                                                            name = d.name.getBytes();
-                                                        } finally {
-                                                            int length = Math.min(name.length, Global.nameMaxChar);
-                                                            byte[] response = new byte[5 + length];
-                                                            response[0] = (byte) (response.length - 1);
-                                                            response[1] = (byte) 0xff;
-                                                            response[2] = Global.COMPANY_ID & 0xff;
-                                                            response[3] = (Global.COMPANY_ID >> 8) & 0xff;
-                                                            response[4] = Global.METABASE_SCAN_ID;
-                                                            System.arraycopy(name, 0, response, 5, length);
-
-                                                            m.getModule(Settings.class).editBleAdConfig()
-                                                                .scanResponse(response)
-                                                                .commit();
-                                                        }
-
-                                                        return m.getModule(Macro.class).endRecordAsync().continueWithTask(macroTask -> {
-                                                            if (macroTask.isFaulted()) {
-                                                                throw macroTask.getError();
-                                                            }
-
-                                                           if (BuildConfig.LOG_EVENT) {
-                                                               JseMetaWearBoard casted = (JseMetaWearBoard) m;
-                                                               Bundle bundle = new Bundle();
-                                                               bundle.putString(FIREBASE_PARAM_DEVICE_NAME, d.name);
-                                                               bundle.putString(FIREBASE_PARAM_MAC, d.mac);
-                                                               bundle.putString(FIREBASE_PARAM_MODEL, Global.getRealModel(m.getModelString(), casted.getModelNumber()));
-                                                               bundle.putString(FIREBASE_PARAM_FIRMWARE, casted.getFirmware());
-
-                                                            }
-
-                                                            return Task.forResult(null);
-                                                        });
-                                                    }
-                                                    return Task.forResult(null);
-                                                });
+                                                m.getModule(Debug.class).disconnectAsync();
+                                                m.disconnectAsync();
+                                                //d.first.isDiscovered = true;
                                             }
+
+
+                                            eraseTask.continueWith(ignored -> {
+                                                checkingDialog.dismiss();
+                                                return null;
+                                            }, Task.UI_THREAD_EXECUTOR);
+                                        }))
+                                        .create()
+                                        .show();
+
+                            } else {
+                                Log.d("if success7", "if success7");
+                                present[0] = true;
+                                DeviceInfoFragment.ifReset = false;
+                                for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> d : activeDevices) {
+                                    final MetaWearBoard m = activityBus.getMetaWearBoard(d.first.btDevice);
+                                    m.disconnectAsync();
+
+                                }
+
+
+                            }
+
+                            checkingDialog.dismiss();
+                            Task<Void> task = Task.forResult(null);
+                            if (present[0]){
+                                configDialog.show();
+                                DeviceInfoFragment.ifReset = false;
+                                for (final MetaBaseDevice d : parameter.devices) {
+                                    final MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
+                                    task = task.onSuccessTask(ignored -> {
+                                        Log.d("if success11", "if success11");
+                                        owner.runOnUiThread(() -> ((TextView) configDialog.findViewById(R.id.message)).setText(owner.getString(R.string.message_config_board, d.name)));
+                                        return m.connectAsync();
+                                    }).continueWithTask(task2 -> {
+                                        if (task2.isFaulted()) {
+                                            Log.d("if success21", "if success21");
+                                            throw new RuntimeException(String.format("This session has been cancelled because the app failed to configure '%s'", d.name), task2.getError());
                                         }
-                                if(present[0]) {
-                                    task.continueWith(task2 -> {
-                                                Log.d("if success61", "if success61");
-                                                configDialog.dismiss();
-                                                if (task2.isFaulted()) {
-                                                    String errorMsg;
-                                                    if (task2.getError() instanceof IllegalRouteOperationException) {
-                                                        StringBuilder builder = new StringBuilder();
-                                                        builder.append("Firmware v1.3.4 or new required.  Please update the firmware for: \n\n");
+                                        return task2;
+                                    }).onSuccessTask(ignored -> {
+                                        Log.d("if success31", "if success31");
+                                        eraseable.add(d);
+                                        Settings.BleConnectionParametersEditor editor = m.getModule(Settings.class).editBleConnParams();
+                                        if (editor != null) {
+                                            editor.maxConnectionInterval(Global.connInterval)
+                                                    .commit();
+                                            return Task.delay(1000L);
+                                        }
+                                        return Task.forResult(null);
+                                    }).onSuccessTask(ignored -> {
+                                        Log.d("if success41", "if success41");
+                                        if (!sensorsAdapter.isStreaming) {
+                                            m.getModule(Macro.class).startRecord();
+                                        }
 
-                                                        boolean first = true;
-                                                        for (MetaBaseDevice d : eraseable) {
-                                                            if (!first) builder.append(", ");
-                                                            builder.append("'").append(d.name).append("'");
+                                        Led led = m.getModule(Led.class);
+                                        if (led != null) {
+                                            led.editPattern(Led.Color.GREEN)
+                                                    .highIntensity((byte) 31).lowIntensity((byte) 0)
+                                                    .riseTime((short) 100).highTime((short) 200).fallTime((short) 100).pulseDuration((short) 800)
+                                                    .repeatCount((byte) 3)
+                                                    .commit();
+                                            led.editPattern(Led.Color.RED)
+                                                    .highIntensity((byte) 10).lowIntensity((byte) 0)
+                                                    .riseTime((short) 100).highTime((short) 200).fallTime((short) 100).pulseDuration((short) 15000)
+                                                    .delay((short) 2400)
+                                                    .repeatCount(Led.PATTERN_REPEAT_INDEFINITELY)
+                                                    .commit();
+                                            led.play();
+                                        }
 
-                                                            first = false;
+                                        final Pair<MetaBaseDevice, Map<SensorConfig, Route>> active = new Pair<>(d, new HashMap<>());
+                                        Task<Void> createRouteTask = Task.forResult(null);
 
-                                                        }
+                                        for (SensorConfig c : sensorsAdapter.items) {
+                                            createRouteTask = createRouteTask.onSuccessTask(ignored2 -> {
+                                                if (c.isEnabled && c.isValid((m))) {
+                                                    return c.addRouteAsync(m).onSuccessTask(task2 -> {
+                                                        active.second.put(c, task2.getResult());
+                                                        return Task.forResult(null);
+                                                    });
+                                                }
+                                                return Task.forResult(null);
+                                            });
+                                        }
+                                        return createRouteTask.onSuccessTask(ignored2 -> Task.forResult(active));
+                                    }).onSuccessTask(task2 -> {
+                                        Log.d("if success51", "if success51");
+                                        activeDevices.add(task2.getResult());
+                                        if (!sensorsAdapter.isStreaming) {
+                                            byte[] name = new byte[]{0x4d, 0x65, 0x74, 0x61, 0x57, 0x65, 0x61, 0x72};
+                                            try {
+                                                name = d.name.getBytes("ASCII");
+                                            } catch (UnsupportedEncodingException ignored) {
+                                                name = d.name.getBytes();
+                                            } finally {
+                                                int length = Math.min(name.length, Global.nameMaxChar);
+                                                byte[] response = new byte[5 + length];
+                                                response[0] = (byte) (response.length - 1);
+                                                response[1] = (byte) 0xff;
+                                                response[2] = Global.COMPANY_ID & 0xff;
+                                                response[3] = (Global.COMPANY_ID >> 8) & 0xff;
+                                                response[4] = Global.METABASE_SCAN_ID;
+                                                System.arraycopy(name, 0, response, 5, length);
 
-                                                        errorMsg = builder.toString();
-                                                    } else {
-                                                        errorMsg = task2.getError().getLocalizedMessage();
-                                                    }
+                                                m.getModule(Settings.class).editBleAdConfig()
+                                                        .scanResponse(response)
+                                                        .commit();
+                                            }
 
-                                                    new AlertDialog.Builder(owner)
-                                                            .setTitle(R.string.title_error)
-                                                            .setMessage(errorMsg)
-                                                            .setPositiveButton(android.R.string.ok, ((dialog, which) -> {
-                                                                Task<Void> eraseTask = Task.forResult(null);
-
-                                                                for (MetaBaseDevice d : eraseable) {
-                                                                    MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
-                                                                    eraseTask = eraseTask.continueWithTask(task4 -> m.connectAsync())
-                                                                            .continueWithTask(connTask -> {
-                                                                                if (!(connTask.isFaulted() || connTask.isCancelled())) {
-                                                                                    m.getModule(Macro.class).eraseAll();
-                                                                                    m.getModule(Debug.class).resetAfterGc();
-                                                                                    m.getModule(Debug.class).disconnectAsync();
-                                                                                }
-                                                                                return Task.forResult(null);
-                                                                            });
-                                                                }
-
-                                                                for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> d : activeDevices) {
-                                                                    final MetaWearBoard m = activityBus.getMetaWearBoard(d.first.btDevice);
-                                                                    m.disconnectAsync();
-
-                                                                }
-
-
-                                                                eraseTask.continueWith(ignored -> {
-                                                                    activityBus.navigateBack();
-                                                                    return null;
-                                                                }, Task.UI_THREAD_EXECUTOR);
-                                                            }))
-                                                            .create()
-                                                            .show();
-                                                } else {
-                                                    new AlertDialog.Builder(owner)
-                                                            .setTitle(R.string.title_success)
-                                                            .setMessage(owner.getString(R.string.message_sensors_active, sensorsAdapter.isStreaming ? "streaming" : "logging"))
-                                                            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                                                                if (!sensorsAdapter.isStreaming) {
-                                                                    for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> d : activeDevices) {
-                                                                        final MetaWearBoard m = activityBus.getMetaWearBoard(d.first.btDevice);
-
-                                                                        m.getModule(Logging.class).start(false);
-                                                                        for (SensorConfig c : d.second.keySet()) {
-                                                                            c.start(m);
-                                                                        }
-
-                                                                        d.first.isDiscovered = false;
-                                                                        m.getModule(Debug.class).disconnectAsync();
-                                                                    }
-                                                                    activityBus.navigateBack();
-                                                                } else {
-                                                                    StreamMonitorFragment.Parameter streamParameters = new StreamMonitorFragment.Parameter();
-                                                                    streamParameters.devices = activeDevices;
-                                                                    streamParameters.sessions = parameter.sessions;
-                                                                    streamParameters.name = parameter.name;
-
-
-
-                                                                    activityBus.swapFragment(StreamMonitorFragment.class, streamParameters);
-                                                                }
-                                                            })
-                                                            .setCancelable(false)
-                                                            .create()
-                                                            .show();
+                                            return m.getModule(Macro.class).endRecordAsync().continueWithTask(macroTask -> {
+                                                if (macroTask.isFaulted()) {
+                                                    throw macroTask.getError();
                                                 }
 
-                                                return null;
-                                            }
-                                            , Task.UI_THREAD_EXECUTOR);
+                                                if (BuildConfig.LOG_EVENT) {
+                                                    JseMetaWearBoard casted = (JseMetaWearBoard) m;
+                                                    Bundle bundle = new Bundle();
+                                                    bundle.putString(FIREBASE_PARAM_DEVICE_NAME, d.name);
+                                                    bundle.putString(FIREBASE_PARAM_MAC, d.mac);
+                                                    bundle.putString(FIREBASE_PARAM_MODEL, Global.getRealModel(m.getModelString(), casted.getModelNumber()));
+                                                    bundle.putString(FIREBASE_PARAM_FIRMWARE, casted.getFirmware());
+
+                                                }
+
+                                                return Task.forResult(null);
+                                            });
+                                        }
+                                        return Task.forResult(null);
+                                    });
                                 }
-                                return null;
-                            }, Task.UI_THREAD_EXECUTOR);
+                            }
+                            if(present[0]) {
+                                task.continueWith(task2 -> {
+                                            Log.d("if success61", "if success61");
+                                            configDialog.dismiss();
+                                            if (task2.isFaulted()) {
+                                                String errorMsg;
+                                                if (task2.getError() instanceof IllegalRouteOperationException) {
+                                                    StringBuilder builder = new StringBuilder();
+                                                    builder.append("Firmware v1.3.4 or new required.  Please update the firmware for: \n\n");
+
+                                                    boolean first = true;
+                                                    for (MetaBaseDevice d : eraseable) {
+                                                        if (!first) builder.append(", ");
+                                                        builder.append("'").append(d.name).append("'");
+
+                                                        first = false;
+
+                                                    }
+
+                                                    errorMsg = builder.toString();
+                                                } else {
+                                                    errorMsg = task2.getError().getLocalizedMessage();
+                                                }
+
+                                                new AlertDialog.Builder(owner)
+                                                        .setTitle(R.string.title_error)
+                                                        .setMessage(errorMsg)
+                                                        .setPositiveButton(android.R.string.ok, ((dialog, which) -> {
+                                                            Task<Void> eraseTask = Task.forResult(null);
+
+                                                            for (MetaBaseDevice d : eraseable) {
+                                                                MetaWearBoard m = activityBus.getMetaWearBoard(d.btDevice);
+                                                                eraseTask = eraseTask.continueWithTask(task4 -> m.connectAsync())
+                                                                        .continueWithTask(connTask -> {
+                                                                            if (!(connTask.isFaulted() || connTask.isCancelled())) {
+                                                                                m.getModule(Macro.class).eraseAll();
+                                                                                m.getModule(Debug.class).resetAfterGc();
+                                                                                m.getModule(Debug.class).disconnectAsync();
+                                                                            }
+                                                                            return Task.forResult(null);
+                                                                        });
+                                                            }
+
+                                                            for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> d : activeDevices) {
+                                                                final MetaWearBoard m = activityBus.getMetaWearBoard(d.first.btDevice);
+                                                                m.disconnectAsync();
+
+                                                            }
+
+
+                                                            eraseTask.continueWith(ignored -> {
+                                                                activityBus.navigateBack();
+                                                                return null;
+                                                            }, Task.UI_THREAD_EXECUTOR);
+                                                        }))
+                                                        .create()
+                                                        .show();
+                                            } else {
+                                                new AlertDialog.Builder(owner)
+                                                        .setTitle(R.string.title_success)
+                                                        .setMessage(owner.getString(R.string.message_sensors_active, sensorsAdapter.isStreaming ? "streaming" : "logging"))
+                                                        .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                                                            if (!sensorsAdapter.isStreaming) {
+                                                                for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> d : activeDevices) {
+                                                                    final MetaWearBoard m = activityBus.getMetaWearBoard(d.first.btDevice);
+
+                                                                    m.getModule(Logging.class).start(false);
+                                                                    for (SensorConfig c : d.second.keySet()) {
+                                                                        c.start(m);
+                                                                    }
+
+                                                                    d.first.isDiscovered = false;
+                                                                    m.getModule(Debug.class).disconnectAsync();
+                                                                }
+                                                                activityBus.navigateBack();
+                                                            } else {
+                                                                StreamMonitorFragment.Parameter streamParameters = new StreamMonitorFragment.Parameter();
+                                                                streamParameters.devices = activeDevices;
+                                                                streamParameters.sessions = parameter.sessions;
+                                                                streamParameters.name = parameter.name;
+                                                                streamParameters.mDevices = parameter.devices;
+                                                                streamParameters.configSessions = parameter.configSessions;
+                                                                //streamParameters.summaryItem = parameter.summaryItem;
+
+
+
+
+                                                                activityBus.swapFragment(StreamMonitorFragment.class, streamParameters);
+                                                            }
+                                                        })
+                                                        .setCancelable(false)
+                                                        .create()
+                                                        .show();
+                                            }
+
+                                            return null;
+                                        }
+                                        , Task.UI_THREAD_EXECUTOR);
+                            }
                             return null;
-                        });
+                        }, Task.UI_THREAD_EXECUTOR);
+                        return null;
+                    });
+
+
+
 
 
 

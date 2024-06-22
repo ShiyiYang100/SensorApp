@@ -53,12 +53,15 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.Legend;
@@ -69,18 +72,15 @@ import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.google.android.material.textfield.TextInputLayout;
 import com.mbientlab.function.Action3;
-import com.mbientlab.metawear.Data;
 import com.mbientlab.metawear.MetaWearBoard;
 import com.mbientlab.metawear.Route;
 import com.mbientlab.metawear.android.BtleService;
 import com.mbientlab.metawear.impl.JseMetaWearBoard;
 import com.mbientlab.metawear.module.Debug;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -103,6 +103,12 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
         List<Pair<MetaBaseDevice, Map<SensorConfig, Route>>> devices;
         List<AppState.Session> sessions;
         String name;
+        List<MetaBaseDevice> devicesRunSuccessful;
+        AppState.SummaryItem summaryItem =   this.summaryItem = new AppState.SummaryItem(new TemperalParameters(),
+                new SpatialParameters(),
+                new AngularParameters());
+        List<AppState.ConfigSession> configSessions;
+        List<MetaBaseDevice> mDevices;
     }
 
     public static class Service extends android.app.Service implements ServiceConnection {
@@ -120,6 +126,7 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
         class LocalBinder extends Binder {
             boolean active;
             Parameter parameter;
+
             List<MetaWearBoard> metawears;
             List<DataHandler> dataHandlers;
 
@@ -132,10 +139,14 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
             List<DataHandler.CsvDataHandler> orientationConfigHandlers;
             List<DataHandler.CsvDataHandler> gpioAdcConfigHandlers;
             List<DataHandler.CsvDataHandler> gpioAbsConfigHandlers;
+            List<DataHandler.CsvDataHandler> gaitConfigHandlers;
             AppState.Session session;
             long start;
             List<DataHandler.SampleCountDataHandler> streamMetrics;
             Map<MetaBaseDevice, List<Pair<SensorConfig, DataHandler.SampleCountDataHandler>>> samples;
+            List<Pair<MetaBaseDevice,MetaBaseDeviceData>> metaBaseDeviceDataList;
+
+
 
             void start(Parameter parameter) {
                 this.parameter = parameter;
@@ -149,9 +160,11 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
                 orientationConfigHandlers = new ArrayList<>();
                 gpioAdcConfigHandlers = new ArrayList<>();
                 gpioAbsConfigHandlers = new ArrayList<>();
+                gaitConfigHandlers = new ArrayList<>();
                 streamMetrics = new ArrayList<>();
                 samples = new LinkedHashMap<>();
                 csvWriters = new ArrayList<>();
+                metaBaseDeviceDataList = new ArrayList<>();
 
                 getApplicationContext().bindService(new Intent(Service.this, BtleService.class), Service.this, Context.BIND_AUTO_CREATE);
                 active = true;
@@ -174,12 +187,16 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
     }
 
     private Parameter parameter;
+    private SelectedGrouping p;
     private Service.LocalBinder binder;
     private Intent streamServiceIntent;
     private static ArrayList<Intent> services;
     private TextView elapsedTimeText;
+    private TextView graphButton, gaitButton;
+    private ScrollView graphs, gaitParameters;
     int sensorSelectionIndex;
-    private boolean ifAccConfig, ifAccMagConfig, ifMagConfig, ifGyroConfig, ifGyroPeakConfig,ifOrientationConfig, ifGpioAdcConfig, ifGpioAbsConfig;
+    private boolean ifAccConfig, ifAccMagConfig, ifMagConfig, ifGyroConfig, ifGyroPeakConfig,
+            ifOrientationConfig, ifGpioAdcConfig, ifGpioAbsConfig;
     public ArrayList<Thread> allThreads = new ArrayList<>();
     long prevUpdate = -1;
 
@@ -193,6 +210,20 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
     private Handler orientationHandler = new Handler();
     private Handler gpioAdcHandler = new Handler();
     private Handler gpioAbsHandler = new Handler();
+    private Handler gaitHandler = new Handler();
+
+    public static float leftKneeHeight;
+    public static float rightKneeHeight;
+
+
+    TextView realTimeStrideTime, realTimeSwingTime, realTimeStanceTime, realTimeToeOff,
+            realTimeHeelStrike, realTimeDST, realTimeSST, realTimeStepTime, realTimeStrideLen,
+            realTimeWalkingSpeed, realTimeMFC, realTimeStepNum, realTimeOXMAX, realTimeOXMIN,
+            realTimeOYMAX, realTimeOYMIN, realTimeOZMAX, realTimeOZMIN;
+    RecyclerView summarySesssions;
+    private AppState.SummaryItem.Adapter summaryItemsAdapter = new AppState.SummaryItem.Adapter();
+
+
     private final Runnable updateValues= new Runnable() {
         @Override
         public void run() {
@@ -447,6 +478,112 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
         }
     };
 
+    private final Runnable updateGaitParameters = new Runnable() {
+        @Override
+        public void run() {
+            //calculate gait parameters
+            List<AppState.SummaryItem> summaryItems = summaryItemsAdapter.summaryItems;
+            float stride = 0f;
+            int device_num = 0;
+            float stance = 0f;
+            float swing = 0f;
+            float totalTime = 0f;
+            float heelStrike = 0f;
+            float toeOff = 0f;
+            int numStep = 0;
+            float strideNum, stepTime;
+            float strideLen = 0f, walkingSpeed = 0f, MFC = 0f;
+            float oXMax = 0f, oXMin = 0f, oYMax = 0f, oYMin = 0f, oZMax = 0f, oZMin = 0f;
+
+            //get the list in the summary item adapter
+
+
+            for(int i = 0; i < binder.metaBaseDeviceDataList.size(); i ++){
+                Pair<MetaBaseDevice, MetaBaseDeviceData> m = binder.metaBaseDeviceDataList.get(i);
+                stride+= m.second.getRealStrideTime();
+                stance += m.second.getRealStanceTime();
+                swing += m.second.getRealSwingTime();
+                //totalTime += m.second.getTotalTime();
+                heelStrike += m.second.getRealHeelStrike();
+                toeOff += m.second.getRealToeOff();
+                numStep += (int) m.second.getTotalStride() / 2 ;
+                strideLen += m.second.getRealStrideLen();
+                walkingSpeed += m.second.getRealWalkingSpeed();
+                MFC += m.second.getRealMFC();
+                oXMax = m.second.getOXMax();
+                oXMin = m.second.getOXMin();
+                oYMax = m.second.getOYMax();
+                oYMin = m.second.getOYMin();
+                oZMax = m.second.getOZMax();
+                oZMin = m.second.getOZMin();
+
+
+                TemperalParameters temperalParameters =  new TemperalParameters(m.second.getStride(),
+                        m.second.getAvgSwing(), m.second.getAvgStance(), toeOff,
+                        heelStrike, 0f, swing,(m.second.getStride() /  2));
+                SpatialParameters spatialParameters = new SpatialParameters(
+                        strideLen,walkingSpeed,MFC,(int)m.second.getTotalStride() / 2);
+                AngularParameters angularParameters = new AngularParameters(oXMax, oXMin, oYMax, oYMin,oZMax, oZMin);
+                AppState.SummaryItem summaryItem = new AppState.SummaryItem(temperalParameters,
+                                spatialParameters,angularParameters);
+                summaryItems.set(i, summaryItem);
+
+                device_num++;
+            }
+
+
+            if(device_num != 0) {
+                stride /= device_num;
+                stance /= device_num;
+                swing /= device_num;
+                totalTime /= device_num;
+                heelStrike /= device_num;
+                toeOff /= device_num;
+                numStep /= device_num;
+                strideLen /= device_num;
+                walkingSpeed /= device_num;
+                MFC /= device_num;
+                oXMax /= device_num;
+                oXMin /= device_num;
+                oYMax /= device_num;
+                oYMin /= device_num;
+                oZMax /= device_num;
+                oZMin /= device_num;
+            }
+
+            stepTime = stride /  2 ;
+
+            if(totalTime != 0){
+                strideNum = totalTime / stride;
+            }
+
+            realTimeStrideTime.setText(stride + "");
+            realTimeSwingTime.setText(swing + "");
+            realTimeStanceTime.setText(stance +"");
+            realTimeToeOff.setText(toeOff+"");
+            realTimeHeelStrike.setText(heelStrike+"");
+            float dsst = (stride / 2) - swing;
+            realTimeDST.setText(dsst+"");
+            realTimeSST.setText(swing + "");
+            realTimeStepTime.setText(stepTime+"");
+            realTimeStrideLen.setText(strideLen+"");
+            realTimeWalkingSpeed.setText(walkingSpeed+"");
+            realTimeMFC.setText(MFC+"");
+            realTimeStepNum.setText(numStep+"");
+            realTimeOXMAX.setText(oXMax+"");
+            realTimeOXMIN.setText(oXMin+"");
+            realTimeOYMAX.setText(oYMax+"");
+            realTimeOYMIN.setText(oYMin+"");
+            realTimeOZMAX.setText(oZMax+"");
+            realTimeOZMIN.setText(oZMin+"");
+            summaryItemsAdapter.notifyDataSetChanged();
+
+
+            gaitHandler.postDelayed(updateGaitParameters, 0L);
+
+        }
+    };
+
 
 
 
@@ -461,11 +598,58 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         Log.d("wowow", "wowow");
+
         super.onViewCreated(view, savedInstanceState);
         //elapsedTime is the time after starting configuring
         elapsedTimeText= view.findViewById(R.id.elapsed_time);
+        graphButton = view.findViewById(R.id.stream_monitor_graph);
+        gaitButton = view.findViewById(R.id.stream_monitor_parameter);
+        graphs =  view.findViewById(R.id.graphs);
+        gaitParameters = view.findViewById(R.id.stream_monitor_gait_view);
+        realTimeStrideTime =  view.findViewById(R.id.realtime_stride_time);
+        realTimeSwingTime = view.findViewById(R.id.realtime_swing_time);
+        realTimeStanceTime = view.findViewById(R.id.summary_stance_time);
+        realTimeToeOff = view.findViewById(R.id.summary_toe_off);
+        realTimeHeelStrike = view.findViewById(R.id.summary_heel_strike);
+        realTimeDST = view.findViewById(R.id.summary_dst);
+        realTimeSST = view.findViewById(R.id.summary_sst);
+        realTimeStepTime = view.findViewById(R.id.summary_step_time);
+        realTimeStrideLen = view.findViewById(R.id.summary_stride_length);
+        realTimeWalkingSpeed = view.findViewById(R.id.summary_walking_speed);
+        realTimeMFC = view.findViewById(R.id.summary_mfc);
+        realTimeStepNum = view.findViewById(R.id.summary_num_of_step);
+        realTimeOXMAX = view.findViewById(R.id.summary_OXMax);
+        realTimeOXMIN = view.findViewById(R.id.summary_OXMin);
+        realTimeOYMAX =  view.findViewById(R.id.summary_OYMax);
+        realTimeOYMIN =  view.findViewById(R.id.summary_OYMin);
+        realTimeOZMAX =  view.findViewById(R.id.summary_OZMax);
+        realTimeOZMIN =  view.findViewById(R.id.summay_OZMin);
+        summarySesssions = view.findViewById(R.id.realtime_device_info);
+        summarySesssions.setLayoutManager(new LinearLayoutManager(getContext()));
+
+        summarySesssions.setAdapter(summaryItemsAdapter);
+        summaryItemsAdapter.notifyDataSetChanged();
+
+        graphs.setVisibility(View.VISIBLE);
+        gaitParameters.setVisibility(View.INVISIBLE);
         elapsedTimeText.setText("00:00:00");
         sensorSelectionIndex = 0;
+
+        graphButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                graphs.setVisibility(View.VISIBLE);
+                gaitParameters.setVisibility(View.INVISIBLE);
+            }
+        });
+
+        gaitButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                graphs.setVisibility(View.INVISIBLE);
+                gaitParameters.setVisibility(View.VISIBLE);
+            }
+        });
 
         view.findViewById(R.id.stream_stop).setOnClickListener(v -> {
             DataHandler.CsvDataHandler.ifStop = true;
@@ -501,6 +685,9 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
             }
             if (ifGpioAbsConfig){
                 gpioAbsHandler.removeCallbacks(updateGpioAbsConfigValues);
+            }
+            if(ifGyroPeakConfig && ifAccConfig && ifGyroConfig && ifOrientationConfig){
+                gaitHandler.removeCallbacks(updateGaitParameters);
             }
             //show the dialog after clicking the stop button at the bottom
             final AlertDialog resetDialog = new AlertDialog.Builder(owner)
@@ -604,15 +791,103 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
 
                 MediaScannerConnection.scanFile(owner, paths, null, null);
 
+
+                //calculate gait parameters
+                float stride = 0f;
+                int device_num = 0;
+                float stance = 0f;
+                float swing = 0f;
+                float totalTime = 0f;
+                float heelStrike = 0f;
+                float toeOff = 0f;
+                int numStep = 0;
+                float doubleSupportTime = 0f;
+                float strideNum = 0f;
+                float strideLen = 0f, walkingSpeed = 0f, MFC = 0f;
+                float oXMax = 0f, oXMin = 0f, oYMax = 0f, oYMin = 0f, oZMax = 0f, oZMin = 0f;
+
+
+                for(Pair<MetaBaseDevice, MetaBaseDeviceData> m: binder.metaBaseDeviceDataList){
+                    stride+= m.second.getStride();
+                    stance += m.second.getAvgStance();
+                    swing += m.second.getAvgSwing();
+                    totalTime += m.second.getTotalTime();
+                    heelStrike += m.second.getAvgHeelStrike();
+                    toeOff += m.second.getAvgToeOff();
+                    numStep += (int) m.second.getTotalStride() / 2 ;
+                    float dsst = (m.second.getStride() / 2) - m.second.getAvgSwing();
+                    doubleSupportTime += dsst;
+                    strideLen += m.second.getAvgStrideLen();
+                    walkingSpeed += m.second.getAvgWalkingSpeed();
+                    MFC += m.second.getAvgMFC();
+                    oXMax += m.second.getOXMax();
+                    oXMin += m.second.getOXMin();
+                    oYMax += m.second.getOYMax();
+                    oYMin += m.second.getOYMin();
+                    oZMax += m.second.getOZMax();
+                    oZMin += m.second.getOZMin();
+
+                    TemperalParameters temperalParameters =  new TemperalParameters(m.second.getStride(),
+                            m.second.getAvgSwing(), m.second.getAvgStance(), toeOff,
+                            heelStrike, dsst, swing,(m.second.getStride() /  2));
+                    SpatialParameters spatialParameters = new SpatialParameters(
+                            m.second.getAvgStrideLen(),m.second.getAvgWalkingSpeed(),m.second.getAvgMFC(),(int)m.second.getTotalStride() / 2);
+                    AngularParameters angularParameters = new AngularParameters(oXMax, oXMin, oYMax, oYMin,oZMax, oZMin);
+
+                    m.first.summaryItem.temperalParameters = temperalParameters;
+                    m.first.summaryItem.spatialParameters = spatialParameters;
+                    m.first.summaryItem.angularParameters = angularParameters;
+                    m.first.summaryItem.deviceName = m.first.name + " " + m.first.mac;
+
+                    device_num++;
+                }
+                if(device_num != 0) {
+                    stride /= device_num;
+                    stance /= device_num;
+                    swing /= device_num;
+                    totalTime /= device_num;
+                    heelStrike /= device_num;
+                    toeOff /= device_num;
+                    numStep /= device_num;
+                    doubleSupportTime /= device_num;
+                    strideLen /= device_num;
+                    walkingSpeed /= device_num;
+                    MFC /= device_num;
+                    oXMax /= device_num;
+                    oXMin /= device_num;
+                    oYMax /= device_num;
+                    oYMin /= device_num;
+                    oZMax /= device_num;
+                    oZMin /= device_num;
+                }
+
+                if(totalTime != 0){
+                    strideNum = totalTime / stride;
+                }
+                //cadence = (strideNum/totalTime_Minutes)
+                //also display individual (for later)
+
                 binder.session.files.clear();
                 binder.session.files.addAll(renamed);
                 binder.parameter.sessions.add(0, binder.session);
 
-                if(SavedSessionsFragment.ifAccessedSavedConfigSessions) {
-                    activityBus.navigateBack();
-                }
+                p = new SelectedGrouping(binder.parameter.sessions,  binder.parameter.configSessions,binder.parameter.name,
+                        binder.parameter.summaryItem) ;
 
-                activityBus.navigateBack();
+                p.devices = parameter.mDevices;
+                p.devicesRunSuccessful = parameter.devicesRunSuccessful;
+
+
+
+                TemperalParameters temperalParameters =  new TemperalParameters(stride, swing, stance, toeOff,
+                        heelStrike,doubleSupportTime,swing,stride / 2);
+                p.summaryItem.temperalParameters = temperalParameters;
+                SpatialParameters spatialParameters =  new SpatialParameters(strideLen,walkingSpeed,MFC,numStep);
+                p.summaryItem.spatialParameters = spatialParameters;
+                AngularParameters angularParameters = new AngularParameters(oXMax, oXMin, oYMax, oYMin,oZMax, oZMin);
+                p.summaryItem.angularParameters = angularParameters;
+
+                activityBus.swapFragment(SummaryFragment.class, p);
                 return null;
             });
         });
@@ -631,6 +906,7 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
         streamServiceIntent = new Intent(owner, Service.class);
         owner.startService(streamServiceIntent);
         owner.getApplicationContext().bindService(streamServiceIntent, this, Context.BIND_AUTO_CREATE);
+        parameter = (Parameter) activityBus.parameter();
 
         activityBus.popBackstack();
     }
@@ -690,6 +966,7 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
 
 
             int count = 0;
+            List<AppState.SummaryItem> summaryItemList = new ArrayList<>();
             for (Pair<MetaBaseDevice, Map<SensorConfig, Route>> it : parameter.devices) {
                 ifAccConfig = false;
                 ifAccMagConfig = false;
@@ -708,6 +985,7 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
                 sampleCounter.init();
                 binder.dataHandlers.add(sampleCounter);
                 binder.streamMetrics.add(sampleCounter);
+                binder.metaBaseDeviceDataList.add(new Pair<>(it.first, metaBaseDeviceData));
 
                 ConstraintLayout status = (ConstraintLayout) getLayoutInflater().inflate(R.layout.board_status, null);
                 ConstraintLayout generalGraphStatus = (ConstraintLayout) getLayoutInflater().inflate(R.layout.general_graph_status, null);
@@ -2300,6 +2578,9 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
                     //eachDeviceAllGraphMetrics.addView(eachThreeAxisGraphStatus);
                 }
 
+
+
+
                 //sorting algorithms, the order of the graphs is
                 //Accelerometer, Magnetometer, Gyroscope, Gpio0 - Gpio5
                 ArrayList<Integer> intofKeys = new ArrayList<>();
@@ -2382,9 +2663,19 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
                     }
                 });
 
-
-
+                TemperalParameters temperalParameters = new TemperalParameters();
+                SpatialParameters spatialParameters = new SpatialParameters();
+                AngularParameters angularParameters = new AngularParameters();
+                AppState.SummaryItem summaryItem = new AppState.SummaryItem(temperalParameters, spatialParameters,
+                                                    angularParameters);
+                summaryItemList.add(summaryItem);
             }
+
+            summaryItemsAdapter.summaryItems.addAll(summaryItemList);
+            summaryItemsAdapter.notifyDataSetChanged();
+
+
+
             for (int i = 0; i < parameter.devices.size(); i++) {
                 for (Map.Entry<SensorConfig, Route> it2 : parameter.devices.get(i).second.entrySet()) {
                     it2.getKey().start(binder.metawears.get(i));
@@ -2471,6 +2762,15 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
                 t5.start();
 
             }
+            if(ifAccConfig && ifGyroConfig && ifGyroPeakConfig && ifOrientationConfig){
+                Thread t6 = new Thread(new Runnable() {
+
+                    public void run() {
+                        gaitHandler.postDelayed(updateGaitParameters, 0L);
+                    }
+                });
+                t6.start();
+            }
         }
         //if the service needs to be reconnected, execute codes in the "else" statement
         else {
@@ -2510,7 +2810,9 @@ public class StreamMonitorFragment extends AppFragmentBase implements ServiceCon
                 if (ifGpioAbsConfig){
                     gpioAbsHandler.postDelayed(updateGpioAbsConfigValues, 0L);
                 }
-
+                if(ifAccConfig && ifGyroConfig && ifGyroPeakConfig && ifOrientationConfig){
+                    gaitHandler.postDelayed(updateGaitParameters, 0L);
+                }
 
                 binder.streamMetrics.get(i).sampleCountView = status.findViewById(R.id.sample_count);
                 binder.streamMetrics.get(i).sampleCountView.setText(String.format(Locale.US, "%d", binder.streamMetrics.get(i).samples));
