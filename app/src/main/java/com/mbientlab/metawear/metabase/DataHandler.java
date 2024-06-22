@@ -1328,14 +1328,7 @@ interface DataHandler {
                     float offset = (last.getTimeInMillis() - start) / 1000.f;
 
                     float[] vector = data.value(float[].class);
-                    /*
-                    fos.write(String.format(Locale.US, "%d,%s,%.3f,%.3f,%.3f,%.3f%n",
-                            last.getTimeInMillis(), formatTimestamp(last), offset,
-                            vector[0], vector[1], vector[2]).getBytes());
 
-                    Log.d("acc", "pooAcc");
-
-                     */
 
 
                     accXValue = vector[0];
@@ -1450,7 +1443,7 @@ interface DataHandler {
 
                      */
 
-
+                    //store acc data in MetaBaseDeviceData object for orientation computation and data resampling
                     if(m.isORunning() && m.isRRunning()) {
                         m.setOATime(offset);
                         m.setRATime(offset);
@@ -1610,7 +1603,7 @@ interface DataHandler {
 
                     gyroFilteredZ = (float)(butterworthGZ.filter((double) vector[2]));
 
-
+                    //store acc data in MetaBaseDeviceData object for orientation computation and data resampling
                     if(m.isORunning() && m.isRRunning()) {
                         //collect Accelerometer data and Gyroscope data when they are enabled
                         //the data are collected for calculating orientation
@@ -2478,16 +2471,22 @@ interface DataHandler {
 
                 }
                 else if (prefix.equals("angular-velocity")&& sensorConfigType.equals("orientation")) {
-                    //Log.d("digital", "doo");
+                    /*
+                        orientation section computes orientation values every 2 sec,
+                        and store the accelerometer and gyroscope values in array lists
+                        stored in MetaBaseDeviceData object
+                     */
+
+
+
                     last = data.timestamp();
                     if (start == null) {
                         first = last;
                         start = first.getTimeInMillis();
                     }
                     float offset = (last.getTimeInMillis() - start) / 1000.f;
-                    //Log.d("digital", "poo");
 
-                    //Log.d("digital", "poo");
+
                     //TODO: need to modify here !
                     float OATime = m.getOATime();
                     float time;
@@ -2498,11 +2497,21 @@ interface DataHandler {
                     }
                     float OGTime = m.getOGTime();
 
-                    if (!ifStop) {
+                    if (!ifStop){
+                        /*
+                            before user clicked on the stop button, calculates orientation values
+                            every 2 sec
+                         */
+
+
+
+                        /*
+                            to avoid array index out of bound exception, get current time based on
+                            the smaller one of the time of last data collected of accelerometer and gyroscope
+                            get acc and gyro data between last data collection time and current time
+                         */
                         ArrayList<Float> oaTimes = m.getOATimes();
-                        int oaTimesSize = m.getOATimes().size();
                         ArrayList<Float> ogTimes = m.getOGTimes();
-                        int ogTimesSize = m.getOGTimes().size();
                         float oaLast = oaTimes.get(oaTimes.size()-1);
                         float ogLast = ogTimes.get(ogTimes.size()-1);
 
@@ -2515,6 +2524,7 @@ interface DataHandler {
                         }
 
                         if(minT != prevOrientationTime || minT == 0){
+                            //if current time = 0sec, than no need to compute orientation values as no data is collected
                             float[] oa = m.getOA(minT);
                             float[] og = m.getOG(minT);
                             float[] o = orientation(50, oa[0], oa[1], oa[2], og[0], og[1], og[2],m);
@@ -2527,15 +2537,16 @@ interface DataHandler {
 
                         if (minT - prevT >= 2) {
 
-                            List<Float> oX = new ArrayList<>();
-                            List<Float> oY = new ArrayList<>();
-                            List<Float> oZ = new ArrayList<>();
+                            List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                            List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                            List<Float> oZ = new ArrayList<>();     //store orientation z-axis
 
                             for (float t = prevT; t <= minT; t += 0.02) {
                                 t = Float.parseFloat(df.format(t));
                                 if (m.oaDContains(t) && m.ogDContains(t)) {
-                                    float[] oa = m.getOA(t);
-                                    float[] og = m.getOG(t);
+                                    float[] oa = m.getOA(t);    //get acc data collected in previous 2 sec
+                                    float[] og = m.getOG(t);    //get gyro data collected in previous 2 sec
+                                    //compute orientation values
                                     float[] orientation = orientation(50, oa[0], oa[1], oa[2], og[0], og[1], og[2],m);
                                     oX.add(orientation[0]);
                                     oY.add(orientation[1]);
@@ -2550,6 +2561,7 @@ interface DataHandler {
 
                             }
 
+                            //find minimum and maximum values of orientation data
                             for(int i = 0; i < oX.size(); i ++){
                                 if(i == 0){
                                     float currOX = oX.get(i);
@@ -2666,6 +2678,7 @@ interface DataHandler {
                                 }
                             }
 
+                            //clean up data after computing orientation values, avoid data overflow
                             m.clearOAData();
                             m.clearOGData();
                             m.setOAPrevTime(minT);
@@ -2675,9 +2688,21 @@ interface DataHandler {
 
 
                         }
-                        //}
-                    }else {
+                    }
+                    else {
+                         /*
+                            when user clicked on stop, get all accelerometer data and
+                            gyroscope data from MetaBaseDeviceObject m, and compute
+                            orientation values
+                         */
                         if (!m.isIfOrientated()) {
+                              /*
+                                to avoid array index out of bound exception, get current time based on
+                                the smaller one of the time of last data collected of accelerometer and gyroscope
+                                get acc and gyro data between last data collection time and current time
+                                The time in last row is based on the smaller one of acc and gyro's last time
+                                to avoid index out of bound exception
+                             */
                             ArrayList<Float> oaTimes = m.getOATimes();
                             int oaTimesSize = m.getOATimes().size();
                             ArrayList<Float> ogTimes = m.getOGTimes();
@@ -2699,11 +2724,12 @@ interface DataHandler {
                                 float[] resampled_yA = resampledDataA[1];
                                 float[] resampled_zA = resampledDataA[2];
 
-                                List<Float> oX = new ArrayList<>();
-                                List<Float> oY = new ArrayList<>();
-                                List<Float> oZ = new ArrayList<>();
+                                List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                                List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                                List<Float> oZ = new ArrayList<>();     //store orientation z-axis
 
                                 for (int i = 0; i < resampledTime.length; i++) {
+                                    //compute orientation values
                                     float[] orientation = orientation(50,resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i], m );
                                     oX.add(orientation[0]);
@@ -2715,7 +2741,7 @@ interface DataHandler {
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i],
                                             orientation[0], orientation[1], orientation[2]).getBytes());
                                 }
-
+                                //find minimum and maximum values of orientation data
                                 for(int i = 0; i < oX.size(); i ++){
                                     if(i == 0){
                                         float currOX = oX.get(i);
@@ -2831,7 +2857,7 @@ interface DataHandler {
 
                                     }
                                 }
-
+                                //clean up data after computing orientation values, avoid data overflow
                                 m.setOAPrevTime(t);
                                 m.clearOAData();
                                 m.clearOGData();
@@ -2852,12 +2878,13 @@ interface DataHandler {
                                 float[] resampled_yG = resampledDataG[1];
                                 float[] resampled_zG = resampledDataG[2];
 
-                                List<Float> oX = new ArrayList<>();
-                                List<Float> oY = new ArrayList<>();
-                                List<Float> oZ = new ArrayList<>();
+                                List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                                List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                                List<Float> oZ = new ArrayList<>();     //store orientation z-axis
 
 
                                 for (int i = 0; i < resampledTime.length; i++) {
+                                    //compute orientation values
                                     float[] orientation = orientation(50,resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i], m );
                                     oX.add(orientation[0]);
@@ -2870,6 +2897,7 @@ interface DataHandler {
                                             orientation[0], orientation[1], orientation[2]).getBytes());
                                 }
 
+                                //find minimum and maximum values of orientation data
                                 for(int i = 0; i < oX.size(); i ++){
                                     if(i == 0){
                                         float currOX = oX.get(i);
@@ -2998,6 +3026,7 @@ interface DataHandler {
                                     }
                                 }
 
+                                //clean up data after computing orientation values, avoid data overflow
                                 m.setOAPrevTime(t);
                                 m.clearOATimes();
                                 m.clearOGTimes();
@@ -3007,6 +3036,9 @@ interface DataHandler {
 
 
                             } else {
+                                //if last time collected of acc and gyro are the same, use code below,
+                                //same logic as code above
+
                                 float[] resampledTime = resample_time(ogTimes, oaTimesSize);
                                 float[][] resampledDataA = resample_data(m.getOAData(), resampledTime.length);
                                 float[] resampled_xA = resampledDataA[0];
@@ -3017,9 +3049,9 @@ interface DataHandler {
                                 float[] resampled_yG = resampledDataG[1];
                                 float[] resampled_zG = resampledDataG[2];
 
-                                List<Float> oX = new ArrayList<>();
-                                List<Float> oY = new ArrayList<>();
-                                List<Float> oZ = new ArrayList<>();
+                                List<Float> oX = new ArrayList<>();     //store orientation x-axis
+                                List<Float> oY = new ArrayList<>();     //store orientation y-axis
+                                List<Float> oZ = new ArrayList<>();     //store orientation z-axis
 
 
                                 for (int i = 0; i < resampledTime.length; i++) {
@@ -3179,17 +3211,18 @@ interface DataHandler {
                     }
                 }
                 else if (prefix.equals("angular-velocity")&& sensorConfigType.equals("resample")) {
-                    //Log.d("digital", "doo");
+                    /*
+                        resample acc and gyro data, make sure their number of rows are the same
+                     */
+
                     last = data.timestamp();
                     if (start == null) {
                         first = last;
                         start = first.getTimeInMillis();
                     }
-                    float offset = (last.getTimeInMillis() - start) / 1000.f;
-                    //Log.d("digital", "poo");
 
-                    //Log.d("digital", "poo");
-                    //TODO: need to modify here !
+
+
                     float RATime = m.getRATime();
                     float time;
                     time = RATime;
@@ -3200,6 +3233,11 @@ interface DataHandler {
                     float RGTime = m.getRGTime();
 
                     if (!ifStop) {
+                           /*
+                            before user clicked on the stop button,resample acc and gyro values
+                            every 2 sec
+                         */
+
                         float prevTime = m.getRAPrevTime();
                         t = m.getRATime();
 
@@ -3213,7 +3251,7 @@ interface DataHandler {
                                 minT = RGTime;
                             }
                             if (minT - prevT >= 2) {
-
+                                //resample acc and gyro values
 
                                 for (float t = prevT; t <= minT; t += 0.02) {
                                     t = Float.parseFloat(df.format(t));
@@ -3230,7 +3268,7 @@ interface DataHandler {
 
                                 }
 
-
+                                //clear data after resampling, aovid data overflow
                                 m.setRAPrevTime(minT);
                                 m.clearRATimes();
                                 m.clearRGTimes();
@@ -3241,7 +3279,7 @@ interface DataHandler {
                             }
                         }
                     }else {
-                        if (!m.isIfResampled()) {
+                        if (!m.isIfResampled()) {  //avoid duplicate resampling
                             ArrayList<Float> raTimes = m.getRATimes();
                             int raTimesSize = m.getRATimes().size();
                             ArrayList<Float> rgTimes = m.getRGTimes();
@@ -3249,10 +3287,16 @@ interface DataHandler {
                             float raLast = raTimes.get(raTimesSize - 1);
                             float rgLast = rgTimes.get(rgTimesSize - 1);
 
-                            Log.d("last time", "last time a= " + raLast);
-                            Log.d("last time", "last time g= " + rgLast);
+                            /*
+                                to avoid array index out of bound exception, get current time based on
+                                the smaller one of the time of last data collected of accelerometer and gyroscope
+                                get acc and gyro data between last data collection time and current time
+                                The time in last row is based on the smaller one of acc and gyro's last time
+                                to avoid index out of bound exception
+                             */
 
                             if (raLast < rgLast) {
+                                //resample acc and gyro data
                                 float[] resampledTime = resample_time(raTimes, rgTimesSize);
                                 float[][] resampledDataG = resample_data(m.getRGData(), resampledTime.length);
                                 float[] resampled_xG = resampledDataG[0];
@@ -3271,18 +3315,7 @@ interface DataHandler {
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i]).getBytes());
                                 }
 
-                                /*
-                                ArrayList<float[]> extra_data = new ArrayList<>();
-                                ArrayList<Float> extra_time = new ArrayList<>();
-                                for(int i = raTimesSize ; i < m.getRGData().size();i++){
-                                    extra_data.add(m.getRGData().get(i));
-                                }
-                                for(int i = raTimes.size() ; i < rgTimes.size();i++){
-                                    extra_time.add(rgTimes.get(i));
-                                }
-
-                                 */
-
+                                //clear data after resampling to avoid data overflow
                                 m.setRAPrevTime(t);
 
                                 m.clearRATimes();
@@ -3292,30 +3325,8 @@ interface DataHandler {
                                 m.clearRGData();
 
 
-
-                                /*
-                                for (float[] d: extra_data){
-                                    m.putRGData(d);
-                                }
-                                for (float t: extra_time){
-                                    m.putRGTimes(t);
-                                }
-
-                                 */
-                                /*
-                                for(int i = 0; i < raTimesSize; i ++){
-                                    m.getRATimes().remove(i);
-                                    m.getRAData().remove(i);
-                                }
-                                for(int i = 0; i < rgTimesSize; i++){
-                                    m.getRGTimes().remove(i);
-                                    m.getRGData().remove(i);
-                                }
-
-                                 */
-
-
                             } else if (raLast > rgLast) {
+                                //resample acc and gyro data
                                 float[] resampledTime = resample_time(rgTimes, raTimesSize);
                                 float[][] resampledDataA = resample_data(m.getRAData(), resampledTime.length);
                                 float[] resampled_xA = resampledDataA[0];
@@ -3333,6 +3344,11 @@ interface DataHandler {
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i]).getBytes());
                                 }
+
+                                /*
+                                    save data that are not resampled in current cycle, make the data
+                                    ready to be resampled in next resampling cycle
+                                 */
                                 ArrayList<float[]> extra_data = new ArrayList<>();
                                 ArrayList<Float> extra_time = new ArrayList<>();
                                 for (int i = rgTimesSize; i < m.getRAData().size(); i++) {
@@ -3341,6 +3357,8 @@ interface DataHandler {
                                 for (int i = rgTimes.size(); i < raTimes.size(); i++) {
                                     extra_time.add(raTimes.get(i));
                                 }
+
+                                //clear data after resampling to avoid data overflow
                                 m.setRAPrevTime(t);
                                 m.clearRATimes();
                                 m.clearRGTimes();
@@ -3348,17 +3366,8 @@ interface DataHandler {
                                 m.clearRAData();
                                 m.clearRGData();
 
-                                /*
-                                for (float[] d: extra_data){
-                                    m.putRAData(d);
-                                }
-
-                                for (float t: extra_time){
-                                    m.putRATimes(t);
-                                }
-
-                                 */
                             } else {
+                                //resample acc and gyro data
                                 float[] resampledTime = resample_time(rgTimes, raTimesSize);
                                 float[][] resampledDataA = resample_data(m.getRAData(), resampledTime.length);
                                 float[] resampled_xA = resampledDataA[0];
@@ -3376,7 +3385,7 @@ interface DataHandler {
                                             resampled_xA[i], resampled_yA[i], resampled_zA[i],
                                             resampled_xG[i], resampled_yG[i], resampled_zG[i]).getBytes());
                                 }
-
+                                //clear data after resampling to avoid data overflow
                                 m.setRAPrevTime(t);
                                 m.clearRATimes();
                                 m.clearRGTimes();
@@ -3392,63 +3401,6 @@ interface DataHandler {
                             m.setIfResampled(true);
                         }
                     }
-
-
-                    /*
-                    if (m.getrTimes().size() >= 2) {
-                        if (m.getResampleTurn() == 0) {
-                            if(m.getrTimes().size()>0){
-                                //m.getrTimes().remove(0);
-                                m.setResampleTurn(1);
-                            }
-
-
-                        } else {
-                            float prevTime = m.getRAPrevTime();
-                            t = m.getrTimes().get(0) ;
-                            t = Float.parseFloat(df.format(t));
-                            if(t - prevTime >= 1){
-                                float[] resampledTime = resample_time(m.getRGTimes(), m.getRATimes().size());
-
-                                for(float ts: resampledTime){
-                                    fos.write(String.format(Locale.US, "%d,%s,%.3f%n",
-                                            last.getTimeInMillis(), formatTimestamp(last), ts).getBytes());
-
-                                    Log.d("resample running", "resample time =" + ts);
-                                }
-
-
-
-                                m.setRAPrevTime(t);
-
-                                m.clearRATimes();
-                                m.clearRGTimes();
-                                m.clearRTimes();
-                                m.setResampleTurn(0);
-
-                                Log.d("resample running", "resample running");
-
-                            }else{
-                                if(m.getrTimes().size() > 0){
-                                    m.getrTimes().remove(0);
-
-                                }
-                            }
-
-
-                            //orientationTurn = 0;
-                        }
-                        //timeRecorded.remove(1);
-                    }
-                    /*
-                    else{
-                        fos.write(String.format(Locale.US, "%d,%s,%.3f,%d%n",
-                                last.getTimeInMillis(), formatTimestamp(last), -1f
-                                , orientationCount).getBytes());
-                    }
-
-                     */
-
 
 
                 }
